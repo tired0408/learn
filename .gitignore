@@ -132,3 +132,14 @@ dmypy.json
 .idea/
 # test file
 test*.py
+# 忽视一些比较大的文件
+*.txt
+*.mp3
+*.h5
+*.mid
+*.wav
+*.csv
+*.mat
+*.jpg
+*.png
+*.jpeg
