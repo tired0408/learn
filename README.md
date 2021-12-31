@@ -1,6 +1,3 @@
-## algorithm
-一些算法相关的练习题
-
 ## deepLearning
 吴恩达微专业深度学习系列课程
 
@@ -15,6 +12,9 @@ pyqt5常用的一些功能实现
 
 ## other
 其他一些单个程序的代码
+
+## stock
+自己研究股票推荐算法的一些代码文件
 
 ## tencent_competition
 腾讯广告率点击算法比赛的研究代码
