@@ -141,6 +141,7 @@ test*.py
 *.csv
 *.mat
 *.jpg
-*.png
+deepLearning/**/*.png
 *.jpeg
 *.avi
+!requirements.txt

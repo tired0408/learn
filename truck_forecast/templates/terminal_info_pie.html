@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>智能预判结果展示</title>
+	<link rel="stylesheet" href="{{url_for('static', filename='css/combo.select.css')}}">
+	<script type="text/javascript" src="http://echarts.baidu.com/gallery/vendors/echarts/echarts-all-3.js"></script>
+	<script src="{{url_for('static', filename='js/jquery-1.11.3.min.js')}}"></script>
+	<script src="{{url_for('static', filename='js/jquery.combo.select.js')}}"></script>
+	<script src="{{url_for('static', filename='js/layer/layer.js')}}"></script>
+    <style>
+        body {
+		    position: inherit;
+		}
+        .content {
+			clear:both;
+    		top: 0;
+		    bottom: 0;
+		    left: 0;
+		    right: 0;
+		    min-width: 1200px;
+		    overflow: hidden;
+		    background: #fff;
+		}
+    </style>
+</head>
+<body>
+	<select hidden>
+		{% for sl in selected_list %}
+			{% if sl['is_selected'] %}
+				<option value="{{sl['code']}}" selected>{{sl['name']}}</option>
+				{% else %}
+				<option value="{{sl['code']}}" >{{sl['name']}}</option>
+			{% endif %}
+		{% endfor %}
+	</select>
+    <div class="content">
+        <div id="main" style="width:600px;height:400px;"></div>
+    </div>
+</body>
+<script type="text/javascript">
+	var terminal_code = "{{terminal_code}}"
+	var data_type = "{{data_type}}"
+	if(terminal_code==""||data_type==""){
+	    // 下拉框
+		$(function() {
+			$('select').comboSelect();
+			var terminal_code=$("select").parent().find(".option-selected").attr("data-value");
+			getData(terminal_code,0)
+		});
+		$('select').change(function(e, v) {
+			getData(e.target.value,0)
+		});
+	}else{
+	    getData(terminal_code,data_type)
+	}
+	// 获取图表数据
+	function getData(terminal_code,data_type){
+		$.ajax({
+			url:"{{url_for('get_pie_data')}}",
+			type:"POST",
+			dataType:"json",
+			data:{"terminal_code":terminal_code,"data_type":data_type},
+			success:function(result){
+				if(result.success){
+					return_info = result.data;
+					option.title.subtext = return_info.terminal_name+"("+return_info.predict_time+")"
+					var legendData = return_info.legend;
+					var values = return_info.value;
+					var seriesData = [];
+					var select_info = {};
+					for (var i = 0; i < legendData.length; i++) {
+						seriesData.push({
+							name: legendData[i],
+							value: values[i]
+						});
+						select_info[legendData[i]] = i < 6;
+					}
+					option.legend.data = legendData;
+					option.legend.selected = select_info;
+					option.series[0].data = seriesData
+					myChart.setOption(option);//重新渲染图表
+				}else{
+				    myChart.clear();
+					layer.alert(result.msg, {title:'提示'});
+				}
+			}
+		});
+	}
+	// 基于准备好的dom，初始化echarts实例
+	var myChart = echarts.init(document.getElementById('main'));
+	// 指定图表的配置项和数据
+	var option = {
+		title : {
+			text: '待进场集装箱船名航次分布情况',
+			subtext:null,
+			x:'center'
+		},
+		tooltip : {
+			trigger: 'item',
+			formatter: "{a} <br/>{b} : {c} ({d}%)"
+		},
+		legend: {
+			type: 'scroll',
+			orient: 'vertical',
+			right: 10,
+			top: 20,
+			bottom: 20,
+			data: null,
+			selected: null,
+			formatter: function (name) {
+				return echarts.format.truncateText(name, 130, '…');
+			},
+			tooltip: {
+				show: true
+			}
+		},
+		series : [
+			{
+				name: '船名-航次',
+				type: 'pie',
+				radius : '55%',
+				center: ['40%', '50%'],
+                label: {
+				    normal: {
+				        show : true,
+                        position : 'inner',
+                        formatter: "{c}",
+                        textStyle : {
+                            fontSize : 12
+                        }
+                    }
+                },
+				data: null
+			}
+		]
+	};
+</script>
+</html>

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>智能预判结果展示</title>
+	<link rel="stylesheet" href="{{url_for('static', filename='css/combo.select.css')}}">
+	<script type="text/javascript" src="http://echarts.baidu.com/gallery/vendors/echarts/echarts-all-3.js"></script>
+	<script src="{{url_for('static', filename='js/jquery-1.11.3.min.js')}}"></script>
+	<script src="{{url_for('static', filename='js/jquery.combo.select.js')}}"></script>
+	<script src="{{url_for('static', filename='js/layer/layer.js')}}"></script>
+    <style>
+        body {
+		    position: inherit;
+		}
+        .content {
+			clear:both;
+    		top: 0;
+		    bottom: 0;
+		    left: 0;
+		    right: 0;
+		    min-width: 1200px;
+		    overflow: hidden;
+		    background: #fff;
+		}
+		.select_name{
+			float:left;
+			margin:9px 0 0 0;
+			font: 100% Helvetica, Arial, Sans-serif;
+		}
+    </style>
+</head>
+<body>
+	<label class="select_name">码头：</label>
+	<select id="terminal" hidden>
+		{% for sl in selected_list %}
+			{% if sl['select'] %}
+				<option value="{{sl['code']}}" selected>{{sl['name']}}</option>
+				{% else %}
+				<option value="{{sl['code']}}" >{{sl['name']}}</option>
+			{% endif %}
+		{% endfor %}
+	</select>
+	<label class="select_name">类型：</label>
+	<select id="legend_type" hidden>
+		<option value="eirtype" selected>进出口</option>
+		<option value="weight">空重箱</option>
+	</select>
+    <div class="content">
+        <div id="main" style="width:800px;height:400px;"></div>
+    </div>
+</body>
+<script type="text/javascript">
+	// 下拉框
+	$(function() {
+		$('select').comboSelect();
+		var legend_type = $("#legend_type").parent().find(".option-selected").attr("data-value");
+		var terminal_code=$("#terminal").parent().find(".option-selected").attr("data-value");
+		getData(terminal_code,legend_type)
+	});
+	$('#terminal').change(function(e, v) {
+	    var terminal_code=e.target.value;
+	    var legend_type = $("#legend_type").parent().find(".option-selected").attr("data-value");
+		getData(terminal_code,legend_type)
+	});
+	$('#legend_type').change(function(e, v) {
+	    var terminal_code=$("#terminal").parent().find(".option-selected").attr("data-value");
+	    var legend_type = e.target.value;
+		getData(terminal_code,legend_type)
+	});
+	// 获取图表数据
+	function getData(terminal_code,legend_type){
+		$.ajax({
+			url:"{{url_for('get_bar_data')}}",
+			type:"POST",
+			dataType:"json",
+			data:{"terminal_code":terminal_code,"legend_type":legend_type},
+			success:function(result){
+				if(result.success){
+					return_info = result.data;
+					option.title.subtext = return_info.terminal_name
+					option.legend.data = return_info.legends
+					option.xAxis[0].data = return_info.x_value
+					option.series = (function(){
+						var series = []
+						var legends = return_info.legends
+						var y_value_list = return_info.y_value_list
+						for(var i=0;i<y_value_list.length;i++){
+							series.push({
+								name:legends[i],
+								type:'bar',
+								data:y_value_list[i]
+							});
+						}
+						return series
+					})()
+					myChart.setOption(option,true);//重新渲染图表
+					myChart.off("click")//取消事件绑定
+					myChart.on('click', function (params) {
+					    layer.open({
+						  type: 2,
+						  title: '船名航次分布情况图',
+						  shadeClose: true,
+						  shade: 0.8,
+						  area: ['700px', '500px'],
+						  content: ["{{url_for('get_pie')}}?terminal_code="+terminal_code+"&data_type="+(params.dataIndex+1),"no"]
+						});
+					});
+				}else{
+					layer.alert(result.msg, {title:'提示'});
+					myChart.clear();
+				}
+			}
+		});
+	}
+	// 基于准备好的dom，初始化echarts实例
+	var myChart = echarts.init(document.getElementById('main'));
+	// 指定图表的配置项和数据
+	var option = {
+	    title : {
+            text: '各时间段待进场集装箱的作业量分布情况',
+            subtext:null,
+            left:'center'
+        },
+        tooltip : {
+            trigger: 'axis'
+        },
+        legend: {
+            data:null,
+            left:'right',
+            orient:'vertical'
+        },
+        calculable : true,
+        xAxis : [
+            {
+                type : 'category',
+                data : null
+            }
+        ],
+        yAxis : [
+            {
+                type : 'value'
+            }
+        ],
+        series : null
+	};
+</script>
+</html>
