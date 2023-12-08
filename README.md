@@ -4,23 +4,14 @@
 ## face_recognition
 使用dlib库,face_recognition库，实现人脸检测、人脸识别  
 
+## LEDorOPC
+一些socket的写法
+
 ## MyPyQt
 pyqt5常用的一些功能实现
 
-## ocr
-使用pyqt5编写的OCR标注工具
-
 ## other
 其他一些单个程序的代码
-
-## stock
-自己研究股票推荐算法的一些代码文件
-
-## tencent_competition
-腾讯广告率点击算法比赛的研究代码
-
-## truck_forecast
-调用百度API的接口计算车辆到目的地的预估时间，使用flash库展示到C/S页面 
 
 ## utils
 常用的代码示例、功能及问题点
