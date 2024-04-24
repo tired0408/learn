@@ -1,6 +1,7 @@
 """
 爬虫抓取医药相关的库存,并导出为xls表格
 XLS属于较老版本,需使用xlwt数据库
+接受OCR识别请求地址,  http://localhost:8557/ocr
 """
 import re
 import xlwt
@@ -9,8 +10,9 @@ import collections
 import pandas as pd
 import numpy as np
 import traceback
+import queue
 from xlwt.Worksheet import Worksheet
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -18,12 +20,29 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+from onceorauto.misc.http_server import HttpServer
 
 
 def correct_str(value):
     """修正字符串: 清理无用字符"""
     value = str(value)
     return value.strip()
+
+
+def deal_method(**kwargs):
+    print(f"接收到识别结果：{kwargs}")
+    if not q.empty():
+        value = q.get()
+        print(f"丢弃多余识别:{value}")
+    ocr_result = kwargs["value"][0] if "value" in kwargs else ""
+    q.put(ocr_result)
+    return {"res": True}
+
+
+q = queue.Queue(maxsize=1)
+func_map = [["/ocr", "GET", deal_method]]
+ocr_http = HttpServer(8557, func_map, logger=True)
+ocr_http.run_server(is_asyn=True)
 
 
 class DataToExcel:
@@ -110,6 +129,7 @@ class DataToExcel:
 class Crawler:
 
     def __init__(self) -> None:
+        # self.ocr_http = OCRHttp(8557)
         self.driver = self.init_chrome()
         self.writer = DataToExcel()
         self.wait = WebDriverWait(self.driver, 5)
@@ -128,6 +148,8 @@ class Crawler:
         options = Options()
         # options.add_argument("--headless")
         # options.add_argument("--disable-gpu")
+        options.add_argument('--proxy-server=127.0.0.1:8080')
+        # options.add_experimental_option('excludeSwitches', ['enable-automation'])
         options.add_argument('--log-level=3')
         driver = Chrome(service=service, options=options)
         return driver
@@ -136,9 +158,10 @@ class Crawler:
         """运行脚本"""
         try:
             websites = pd.read_excel(path)
-            # websites = websites[websites['流向查询网址'] != self.spfj_url]
-            # websites = websites[websites['流向查询网址'] != self.inca_url]
-            # websites = websites[websites['流向查询网址'] != self.luyan_url]
+            websites = websites[websites['流向查询网址'] != self.spfj_url]
+            websites = websites[websites['流向查询网址'] != self.inca_url]
+            websites = websites[websites['流向查询网址'] != self.luyan_url]
+            websites = websites[websites['流向查询网址'] != self.tc_url]
             self.writer.client_name = websites.iloc[0, 0]
             for _, row in websites.iterrows():
                 client_name = correct_str(row.iloc[0])
@@ -162,15 +185,16 @@ class Crawler:
                     self.druggc_grab(user, password, district_name)
                 else:
                     raise Exception("未定义该网站的爬虫抓取方法")
-                break
             print("已完成所有数据写入,开始优化格式")
             self.writer.write_to_excel()
             self.writer.cell_format()
             self.writer.save()
             print("脚本已运行完成.")
-        except Exception as e:
+        except Exception:
+            print("-" * 150)
+            print("脚本运行出现异常:")
             print(traceback.format_exc())
-            print(f"脚本运行出现异常: {e}")
+            print("-" * 150)
 
     def spfj_grab(self, user, password, option_name):
         """国控福建流向查询系统的抓取
@@ -289,10 +313,22 @@ class Crawler:
             password: (str); 密码
         """
         self.driver.get(self.tc_url)
-        self.wait.until(EC.visibility_of_element_located((By.ID, "txt_UserName")))
-        self.clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
-        self.clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
-        WebDriverWait(self.driver, 120).until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
+        while True:
+            try:
+                self.wait.until(EC.visibility_of_element_located((By.ID, "imgLogin")))
+                self.clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
+                self.clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
+                captcha = q.get(timeout=5)
+                print(f"输入验证码:{captcha}")
+                self.clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha)
+                self.driver.find_element(By.ID, "imgLogin").click()
+                self.wait.until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
+            except UnexpectedAlertPresentException as e:
+                if e.alert_text == "验证码输入出错":
+                    continue
+                else:
+                    raise e
+            break
         try:
             values = self.driver.find_element(By.XPATH, "//table[@border='1']").find_elements(By.TAG_NAME, "tr")
             for each_v in values[1:]:
@@ -312,11 +348,26 @@ class Crawler:
             district_name: (str); 区域名称
         """
         self.driver.get(self.druggc_url)
-        self.wait.until(EC.visibility_of_element_located((By.ID, "username")))
+        self.wait.until(EC.visibility_of_element_located((By.ID, "login")))
         self.clear_and_send(self.driver.find_element(By.ID, "username"), user)
         self.clear_and_send(self.driver.find_element(By.ID, "password"), password)
         Select(self.driver.find_element(By.ID, "entryid")).select_by_visible_text(district_name)
-        WebDriverWait(self.driver, 120).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='库存明细']")))
+        while True:
+            captcha = q.get(timeout=5)
+            print(f"输入验证码:{captcha}")
+            if len(captcha) == 4:
+                self.clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
+                self.driver.find_element(By.ID, "login").click()
+                captcha_tip = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
+                try:
+                    WebDriverWait(self.driver, 1).until(captcha_tip)
+                except TimeoutException:
+                    break
+                WebDriverWait(self.driver, 5).until_not(captcha_tip)
+            else:
+                print("验证码识别错误，更换验证码图片")
+            self.driver.find_element(By.ID, "captchaImg").click()
+        self.wait.until(EC.visibility_of_element_located((By.XPATH, "//span[text()='库存明细']")))
         self.driver.find_element(By.XPATH, "//span[text()='库存明细']").click()
         self.driver.switch_to.frame(self.driver.find_element(By.ID, "mainframe"))
         try:
@@ -349,3 +400,4 @@ class Crawler:
 if __name__ == "__main__":
     crawler = Crawler()
     crawler.run(r"E:\NewFolder\chensu\库存网查明细.xlsx")
+    ocr_http.close_server()
