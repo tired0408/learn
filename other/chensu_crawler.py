@@ -105,6 +105,8 @@ class DataToExcel:
                 reference = ""
                 remark = "未在产品库找到"
             number = int(np.sum(list(number)))
+            if product_name == "外用红色诺卡氏菌细胞壁骨架":
+                number = number * 2
             self.ws.write(self.row_i, 0, self.client_name)
             self.ws.write(self.row_i, 1, product_name)
             self.ws.write(self.row_i, 2, number)
@@ -129,7 +131,6 @@ class DataToExcel:
 class Crawler:
 
     def __init__(self) -> None:
-        # self.ocr_http = OCRHttp(8557)
         self.driver = self.init_chrome()
         self.writer = DataToExcel()
         self.wait = WebDriverWait(self.driver, 5)
@@ -143,7 +144,7 @@ class Crawler:
         self.driver.quit()
 
     def init_chrome(self):
-        exe_path = r'E:\py-workspace\learn\other\chromedriver.exe'
+        exe_path = r'E:\NewFolder\chensu\chromedriver-win64-124\chromedriver.exe'
         service = Service(exe_path)
         options = Options()
         # options.add_argument("--headless")
@@ -158,10 +159,10 @@ class Crawler:
         """运行脚本"""
         try:
             websites = pd.read_excel(path)
-            websites = websites[websites['流向查询网址'] != self.spfj_url]
-            websites = websites[websites['流向查询网址'] != self.inca_url]
-            websites = websites[websites['流向查询网址'] != self.luyan_url]
-            websites = websites[websites['流向查询网址'] != self.tc_url]
+            # websites = websites[websites['流向查询网址'] != self.spfj_url]
+            # websites = websites[websites['流向查询网址'] != self.inca_url]
+            # websites = websites[websites['流向查询网址'] != self.luyan_url]
+            # websites = websites[websites['流向查询网址'] != self.tc_url]
             self.writer.client_name = websites.iloc[0, 0]
             for _, row in websites.iterrows():
                 client_name = correct_str(row.iloc[0])
