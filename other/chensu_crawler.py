@@ -97,18 +97,20 @@ class DataToExcel:
         """将数据写入EXCEL表格"""
         self.widths[0] = max(self.widths[0], self.len_byte(self.client_name))
         name2standard = self.database[self.client_name]
-        for product_name, number in self.data.items():
-            if product_name in name2standard:
-                product_name, reference = name2standard[product_name]
-                remark = ""
-            else:
-                reference = ""
-                remark = "未在产品库找到"
-            number = int(np.sum(list(number)))
-            if product_name == "外用红色诺卡氏菌细胞壁骨架":
+        write_value = []  # 写入的数据:产品标准名称，数量, 参考信息，备注
+        for product_name, [standard_name, reference] in name2standard.items():
+            number = int(np.sum(list(self.data.pop(product_name)))) if product_name in self.data else 0
+            if standard_name == "外用红色诺卡氏菌细胞壁骨架":
                 number = number * 2
+            write_value.append([standard_name, number, reference, ""])
+
+        for product_name, number in self.data.items():
+            number = int(np.sum(list(number)))
+            write_value.append([product_name, number, "", "未在产品库找到"])
+
+        for standard_name, number, reference, remark in write_value:
             self.ws.write(self.row_i, 0, self.client_name)
-            self.ws.write(self.row_i, 1, product_name)
+            self.ws.write(self.row_i, 1, standard_name)
             self.ws.write(self.row_i, 2, number)
             self.ws.write(self.row_i, 3, self.date, self.date_style)
             self.ws.write(self.row_i, 4, self.date, self.date_style)
@@ -116,7 +118,7 @@ class DataToExcel:
             self.ws.write(self.row_i, 7, remark)
             self.row_i += 1
 
-            self.widths[1] = max(self.widths[1], self.len_byte(product_name))
+            self.widths[1] = max(self.widths[1], self.len_byte(standard_name))
             self.widths[2] = max(self.widths[2], self.len_byte(str(number)))
         self.data.clear()
         print(f"[{self.client_name}]已将数据写入到excel表格中.")
@@ -144,13 +146,13 @@ class Crawler:
         self.driver.quit()
 
     def init_chrome(self):
-        exe_path = r'E:\NewFolder\chensu\chromedriver-win64-124\chromedriver.exe'
+        exe_path = r'E:\NewFolder\chensu\chromedriver_mac_arm64_114\chromedriver.exe'
         service = Service(exe_path)
         options = Options()
         # options.add_argument("--headless")
         # options.add_argument("--disable-gpu")
         options.add_argument('--proxy-server=127.0.0.1:8080')
-        # options.add_experimental_option('excludeSwitches', ['enable-automation'])
+        options.add_argument('ignore-certificate-errors')
         options.add_argument('--log-level=3')
         driver = Chrome(service=service, options=options)
         return driver
@@ -186,6 +188,7 @@ class Crawler:
                     self.druggc_grab(user, password, district_name)
                 else:
                     raise Exception("未定义该网站的爬虫抓取方法")
+                break
             print("已完成所有数据写入,开始优化格式")
             self.writer.write_to_excel()
             self.writer.cell_format()
