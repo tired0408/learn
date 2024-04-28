@@ -50,8 +50,6 @@ class Store:
 
     def write_comment(self, values):
         """写入并生成评论文件夹"""
-        if len(values) == 0:
-            return None
         self.comment_index += 1
         name = f"{self.comment_index}.txt"
         txt_path = os.path.join(self.comment_path, name)
@@ -157,11 +155,17 @@ class Store:
 
 class Crawler:
 
-    def __init__(self, name, only_owner=False, ):
+    def __init__(self, name, only_owner=False, is_pdf=False, is_img=False, is_comment=False):
         """初始化
         Args:
             only_owner: (bool); 是否只看星主
+            is_pdf: (bool); 是否下载PDF
+            is_img: (bool); 是否下载图片
+            is_comment: (bool); 是否抓取评论
         """
+        self.is_pdf = is_pdf
+        self.is_img = is_img
+        self.is_comment = is_comment
         self.driver = self.init_chrome()  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
         self.owner = Store(name)
@@ -174,9 +178,9 @@ class Crawler:
         service = Service(exe_path)
         chrome_options = Options()
         chrome_options.add_argument(f'user-data-dir={user_path}')  # 指定用户数据目录
-        chrome_options.add_argument("--disable-extensions")  # 禁用扩展
-        chrome_options.add_argument('--headless')  # 设置无界面模式
-        chrome_options.add_argument('--disable-gpu')  # 禁用 GPU 加速
+        # chrome_options.add_argument("--disable-extensions")  # 禁用扩展
+        # chrome_options.add_argument('--headless')  # 设置无界面模式
+        # chrome_options.add_argument('--disable-gpu')  # 禁用 GPU 加速
         prefs = {
             "download.default_directory": r"D:\Download",  # 指定下载目录
         }
@@ -224,8 +228,6 @@ class Crawler:
                     else:
                         print(f"没有{year_name}年{month_name}的数据")
                         break
-                # else:
-                #     continue
                 break
         else:
             print("保存最近的所有数据")
@@ -277,16 +279,9 @@ class Crawler:
             content = content_container.find_element(By.TAG_NAME, "div")
             content_type = content.get_attribute("class")
             content_text = self.analysis_content(content.find_element(By.CLASS_NAME, "content"))
-            comment_container = topic_element.find_element(By.CLASS_NAME, "comment-box")
-            comments = self.analysis_comment(comment_container.find_elements(By.TAG_NAME, "app-comment-item"))
-            comments = store.write_comment(comments)
+            comments = self.analysis_and_write_comment(topic_element, store)
             images = self.analysis_and_download_imgs(content.find_elements(By.TAG_NAME, "img"), store)
-            try:
-                annexs_container = topic_element.find_element(By.TAG_NAME, "app-file-gallery")
-                annexs = self.analysis_and_download_annex(
-                    topic_element, annexs_container.find_elements(By.CLASS_NAME, "item"), store)
-            except NoSuchElementException:
-                annexs = []
+            annexs = self.analysis_and_download_annex(topic_element, store)
             store.write_info(role_name, date, content_type, content_text, images, annexs, comments)
 
     def wait_content_load(self):
@@ -302,17 +297,24 @@ class Crawler:
         soup = BeautifulSoup(element_html, 'lxml')
         return soup.text
 
-    def analysis_comment(self, values: List[WebElement]):
+    def analysis_and_write_comment(self, topic_element: WebElement, store: Store):
         """分析评论"""
+        if not self.is_comment:
+            return None
+        values = topic_element.find_element(By.CLASS_NAME, "comment-box").find_elements(By.TAG_NAME, "app-comment-item")
+        if len(values) == 0:
+            return None
         rd = []
         for element in values:
             date = element.find_element(By.CLASS_NAME, "time").text
             comment = element.find_element(By.CLASS_NAME, "text").text
             rd.append(f"({date}){comment}")
-        return rd
+        return store.write_comment(rd)
 
     def analysis_and_download_imgs(self, values: List[WebElement], store: Store):
         """分析并下载图片"""
+        if not self.is_img:
+            return []
         names = []
         for element in values:
             src_path = element.get_attribute("src")
@@ -320,28 +322,35 @@ class Crawler:
             names.append(name)
         return names
 
-    def analysis_and_download_annex(self, container: WebElement, values: List[WebElement], store: Store):
+    def analysis_and_download_annex(self, container: WebElement, store: Store):
         """分析并下载附件"""
-        if len(values) != 0:
+        if not self.is_pdf:
+            return []
+        try:
+            values = container.find_element(By.TAG_NAME, "app-file-gallery").find_elements(By.CLASS_NAME, "item")
+            if len(values) == 0:
+                return []
             self.driver.execute_script("arguments[0].scrollIntoView(true);", container)
-        names = []
-        for element in values:
-            name = element.find_element(By.CLASS_NAME, "file-name").text
-            names.append(name)
-            if store.annex_exists(name):
-                continue
-            element.click()
-            WebDriverWait(container, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
-            container.find_element(By.CLASS_NAME, "download").click()
-            store.wait_start_annex_download(name)
-            self.driver.execute_script("document.elementFromPoint(0, 0).click();")
-            WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
-        return names
+            names = []
+            for element in values:
+                name = element.find_element(By.CLASS_NAME, "file-name").text
+                names.append(name)
+                if store.annex_exists(name):
+                    continue
+                element.click()
+                WebDriverWait(container, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
+                container.find_element(By.CLASS_NAME, "download").click()
+                store.wait_start_annex_download(name)
+                self.driver.execute_script("document.elementFromPoint(0, 0).click();")
+                WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
+            return names
+        except NoSuchElementException:
+            return []
 
 
 if __name__ == "__main__":
-    only_owner = False  # 是否只看星主
-    url = r"https://wx.zsxq.com/dweb2/index/group/48841188111158"
-    name = r"张老板"
-    module = Crawler(name, only_owner=False)
+    url = r"https://wx.zsxq.com/dweb2/index/group/51288484484424"
+    name = r"枪出如龙"
+    # 是否只看星主,是否下载PDF
+    module = Crawler(name, only_owner=True, is_pdf=False, is_img=False, is_comment=False)
     module.run(url)
