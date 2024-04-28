@@ -81,17 +81,6 @@ class Store:
         except requests.exceptions.ConnectionError:
             return [src, target]
 
-    def wait_img_task(self):
-        """等待图片保存线程完成"""
-        while len(self.img_tasks) != 0:
-            for _ in tqdm(range(len(self.img_tasks))):
-                task: Future = self.img_tasks.popleft()
-                value = task.result()
-                if value is None:
-                    continue
-                task = self.img_pool.submit(self.download_img_method, *value)
-                self.img_tasks.append(task)
-
     def wait_start_annex_download(self, name):
         """等待附件开始下载"""
         st = time.time()
@@ -116,12 +105,20 @@ class Store:
         self.annex_download_list.append(name)
         return False
 
+    def wait_img_task(self):
+        """等待图片保存线程完成"""
+        while len(self.img_tasks) != 0:
+            for _ in tqdm(range(len(self.img_tasks))):
+                task: Future = self.img_tasks.popleft()
+                value = task.result()
+                if value is None:
+                    continue
+                task = self.img_pool.submit(self.download_img_method, *value)
+                self.img_tasks.append(task)
+
     def wait_annex(self):
         """等待附件保存完成"""
-        if len(self.annex_download_list) == 0:
-            print("没有相关的附件需要保存")
-            return
-        while True:
+        while len(self.annex_download_list) != 0:
             for _ in tqdm(range(len(self.annex_download_list))):
                 name = self.annex_download_list.popleft()
                 src = os.path.join(self.chrome_download, name)
@@ -130,10 +127,7 @@ class Store:
                     shutil.move(src, tge)
                 else:
                     self.annex_download_list.append(name)
-            if len(self.annex_download_list) != 0:
-                time.sleep(30)
-            else:
-                break
+                    time.sleep(1)
 
     def write_info(self, name, date, ctype, content, images, annexs, comment):
         """写入文字信息"""
@@ -156,12 +150,13 @@ class Store:
 class Crawler:
 
     def __init__(self, name, only_owner=False, is_pdf=False, is_img=False, is_comment=False):
-        """初始化
-        Args:
-            only_owner: (bool); 是否只看星主
-            is_pdf: (bool); 是否下载PDF
-            is_img: (bool); 是否下载图片
-            is_comment: (bool); 是否抓取评论
+        """
+        初始化
+        :param name: (str); 星球名称
+        :param only_owner: (bool); 是否只看星主
+        :param is_pdf: (bool); 是否下载PDF
+        :param is_img: (bool); 是否下载图片
+        :param is_comment: (bool); 是否抓取评论
         """
         self.is_pdf = is_pdf
         self.is_img = is_img
@@ -173,7 +168,7 @@ class Crawler:
 
     def init_chrome(self):
         """定义谷歌浏览器"""
-        exe_path = r'E:\py-workspace\learn\other\chromedriver.exe'
+        exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
         user_path = r'C:\Users\Administrator\AppData\Local\Google\Chrome\User Data'
         service = Service(exe_path)
         chrome_options = Options()
@@ -181,6 +176,7 @@ class Crawler:
         # chrome_options.add_argument("--disable-extensions")  # 禁用扩展
         # chrome_options.add_argument('--headless')  # 设置无界面模式
         # chrome_options.add_argument('--disable-gpu')  # 禁用 GPU 加速
+        chrome_options.add_argument('--log-level=3')  # 关闭日志提示
         prefs = {
             "download.default_directory": r"D:\Download",  # 指定下载目录
         }
@@ -193,8 +189,12 @@ class Crawler:
         """关闭谷歌浏览器"""
         self.driver.quit()
 
-    def run(self, url):
-        """抓取页面"""
+    def run(self, url, date=None):
+        """
+        抓取页面
+        :param url: (str); 需要抓取的页面地址
+        :param date: (str); 抓取的截至日期,例如:2023.02
+        """
         # 打开登入页面
         self.driver.get(r"https://wx.zsxq.com/dweb2/login")
         # 等待手动登录完成
@@ -208,6 +208,11 @@ class Crawler:
             menu_container.find_element(By.XPATH, "//div[text()=' 只看星主 ']").click()
             self.wait_content_load()
         # 抓取页面信息
+        if date is None:
+            stop_year, stop_month = 0, 0
+        else:
+            stop_year, stop_month = date.split(".")
+            stop_year, stop_month = int(stop_year), int(stop_month)
         selector_container = self.driver.find_element(By.TAG_NAME, "app-month-selector")
         if selector_container.is_displayed():
             for year_selector in selector_container.find_elements(By.TAG_NAME, "div")[1:]:
@@ -228,18 +233,22 @@ class Crawler:
                     else:
                         print(f"没有{year_name}年{month_name}的数据")
                         break
+                    if int(year_name) <= stop_year and int(month_name[:-1]) <= stop_month:
+                        print(f"抓取数据，截至到:{date}")
+                        break
+                else:
+                    continue
                 break
         else:
             print("保存最近的所有数据")
             self.single_page_read()
         print("等待作者相关图片的保存完成")
         self.owner.wait_img_task()
-        if self.member is not None:
-            print("等待成员相关图片的保存完成")
-            self.member.wait_img_task()
         print("等待作者相关附件的保存完成")
         self.owner.wait_annex()
         if self.member is not None:
+            print("等待成员相关图片的保存完成")
+            self.member.wait_img_task()
             print("等待成员相关附件的保存完成")
             self.member.wait_annex()
         print("爬虫抓取完成")
@@ -351,6 +360,6 @@ class Crawler:
 if __name__ == "__main__":
     url = r"https://wx.zsxq.com/dweb2/index/group/51288484484424"
     name = r"枪出如龙"
-    # 是否只看星主,是否下载PDF
-    module = Crawler(name, only_owner=True, is_pdf=False, is_img=False, is_comment=False)
-    module.run(url)
+    # 是否只看星主,是否下载PDF,是否下载图片,是否抓取评论
+    module = Crawler(name, only_owner=True, is_pdf=False, is_img=True, is_comment=True)
+    module.run(url, date=None)
