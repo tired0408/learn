@@ -5,6 +5,7 @@ import os
 import time
 import shutil
 import requests
+import traceback
 import collections
 from tqdm import tqdm
 from typing import List
@@ -195,53 +196,59 @@ class Crawler:
         :param url: (str); 需要抓取的页面地址
         :param date: (str); 抓取的截至日期,例如:2023.02
         """
-        # 打开登入页面
-        self.driver.get(r"https://wx.zsxq.com/dweb2/login")
-        # 等待手动登录完成
-        self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "user-container")))
-        # 打开需要抓取的页面
-        self.driver.get(url)
-        self.wait_content_load()
-        # 点击只看星主
-        if self.member is None:
-            menu_container = self.driver.find_element(By.CLASS_NAME, "menu-container")
-            menu_container.find_element(By.XPATH, "//div[text()=' 只看星主 ']").click()
+        try:
+            # 打开登入页面
+            self.driver.get(r"https://wx.zsxq.com/dweb2/login")
+            # 等待手动登录完成
+            self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "user-container")))
+            # 打开需要抓取的页面
+            self.driver.get(url)
             self.wait_content_load()
-        # 抓取页面信息
-        if date is None:
-            stop_year, stop_month = 0, 0
-        else:
-            stop_year, stop_month = date.split(".")
-            stop_year, stop_month = int(stop_year), int(stop_month)
-        selector_container = self.driver.find_element(By.TAG_NAME, "app-month-selector")
-        if selector_container.is_displayed():
-            for year_selector in selector_container.find_elements(By.TAG_NAME, "div")[1:]:
-                year_name = self.analysis_content(year_selector)
-                if "active" not in year_selector.get_attribute("class"):
-                    self.driver.execute_script("arguments[0].click();", year_selector)
-                    self.wait_content_load()
-                for month_selector in year_selector.find_element(By.XPATH, "..").find_elements(By.TAG_NAME, "li"):
-                    month_name = self.analysis_content(month_selector)
-                    if "active" not in month_selector.get_attribute("class"):
-                        self.driver.execute_script("arguments[0].click();", month_selector)
+            # 点击只看星主
+            if self.member is None:
+                menu_container = self.driver.find_element(By.CLASS_NAME, "menu-container")
+                menu_container.find_element(By.XPATH, "//div[text()=' 只看星主 ']").click()
+                self.wait_content_load()
+            # 抓取页面信息
+            if date is None:
+                stop_year, stop_month = 0, 0
+            else:
+                stop_year, stop_month = date.split(".")
+                stop_year, stop_month = int(stop_year), int(stop_month)
+            selector_container = self.driver.find_element(By.TAG_NAME, "app-month-selector")
+            if selector_container.is_displayed():
+                for year_selector in selector_container.find_elements(By.TAG_NAME, "div")[1:]:
+                    year_name = self.analysis_text(year_selector)
+                    if "active" not in year_selector.get_attribute("class"):
+                        self.driver.execute_script("arguments[0].click();", year_selector)
                         self.wait_content_load()
-                    try:
-                        self.driver.find_element(By.CLASS_NAME, "no-data")
-                    except NoSuchElementException:
-                        print(f"保存{year_name}年{month_name}的数据")
-                        self.single_page_read()
+                    for month_selector in year_selector.find_element(By.XPATH, "..").find_elements(By.TAG_NAME, "li"):
+                        month_name = self.analysis_text(month_selector)
+                        if "active" not in month_selector.get_attribute("class"):
+                            self.driver.execute_script("arguments[0].click();", month_selector)
+                            self.wait_content_load()
+                        try:
+                            self.driver.find_element(By.CLASS_NAME, "no-data")
+                        except NoSuchElementException:
+                            print(f"保存{year_name}年{month_name}的数据")
+                            self.single_page_read()
+                        else:
+                            print(f"没有{year_name}年{month_name}的数据")
+                            break
+                        if int(year_name) <= stop_year and int(month_name[:-1]) <= stop_month:
+                            print(f"抓取数据，截至到:{date}")
+                            break
                     else:
-                        print(f"没有{year_name}年{month_name}的数据")
-                        break
-                    if int(year_name) <= stop_year and int(month_name[:-1]) <= stop_month:
-                        print(f"抓取数据，截至到:{date}")
-                        break
-                else:
-                    continue
-                break
-        else:
-            print("保存最近的所有数据")
-            self.single_page_read()
+                        continue
+                    break
+            else:
+                print("保存最近的所有数据")
+                self.single_page_read()
+        except Exception:
+            print(traceback.format_exc())
+            print("-" * 150)
+            print("读取过程中报错")
+            print("-" * 150)
         print("等待作者相关图片的保存完成")
         self.owner.wait_img_task()
         print("等待作者相关附件的保存完成")
@@ -284,10 +291,21 @@ class Crawler:
                 store = self.owner if role_type == "owner" else self.member
             role_name = role.text
             date = topic_element.find_element(By.CLASS_NAME, "date").text
-            content_container = topic_element.find_element(By.TAG_NAME, "app-talk-content")
+            for name, text_method in {
+                "app-talk-content": self.analysis_talk_or_task,
+                "app-task-content": self.analysis_talk_or_task,
+                "app-answer-content": self.analysis_answer
+            }.items():
+                try:
+                    content_container = topic_element.find_element(By.TAG_NAME, name)
+                    break
+                except NoSuchElementException:
+                    continue
+            else:
+                raise Exception("该主题内容的格式抓取未定义.")
             content = content_container.find_element(By.TAG_NAME, "div")
             content_type = content.get_attribute("class")
-            content_text = self.analysis_content(content.find_element(By.CLASS_NAME, "content"))
+            content_text = text_method(content)
             comments = self.analysis_and_write_comment(topic_element, store)
             images = self.analysis_and_download_imgs(content.find_elements(By.TAG_NAME, "img"), store)
             annexs = self.analysis_and_download_annex(topic_element, store)
@@ -300,8 +318,19 @@ class Crawler:
         c3 = EC.visibility_of_element_located((By.CLASS_NAME, "no-data"))
         self.wait.until(EC.any_of(c1, c2, c3))
 
-    def analysis_content(self, element: WebElement):
-        """解析知识内容"""
+    def analysis_talk_or_task(self, content: WebElement):
+        """分析自诉以及作业主题的内容"""
+        content_text = self.analysis_text(content.find_element(By.CLASS_NAME, "content"))
+        return content_text
+
+    def analysis_answer(self, content: WebElement):
+        """分析问答主题的内容"""
+        question_text = self.analysis_text(content.find_element(By.CLASS_NAME, "question"))
+        answer_text = self.analysis_text(content.find_element(By.CLASS_NAME, "answer"))
+        return f"----问题:{question_text}\n----回答:{answer_text}\n"
+
+    def analysis_text(self, element: WebElement):
+        """分析text的内容"""
         element_html = element.get_attribute('outerHTML')
         soup = BeautifulSoup(element_html, 'lxml')
         return soup.text
@@ -358,8 +387,8 @@ class Crawler:
 
 
 if __name__ == "__main__":
-    url = r"https://wx.zsxq.com/dweb2/index/group/51288484484424"
-    name = r"枪出如龙"
+    url = r"https://wx.zsxq.com/dweb2/index/group/828241118452"
+    name = r"小乐常旅课"
     # 是否只看星主,是否下载PDF,是否下载图片,是否抓取评论
-    module = Crawler(name, only_owner=True, is_pdf=False, is_img=True, is_comment=True)
-    module.run(url, date=None)
+    module = Crawler(name, only_owner=False, is_pdf=False, is_img=True, is_comment=True)
+    module.run(url, date="2024.04")
