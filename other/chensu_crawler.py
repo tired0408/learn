@@ -188,7 +188,6 @@ class Crawler:
                     self.druggc_grab(user, password, district_name)
                 else:
                     raise Exception("未定义该网站的爬虫抓取方法")
-                break
             print("已完成所有数据写入,开始优化格式")
             self.writer.write_to_excel()
             self.writer.cell_format()
