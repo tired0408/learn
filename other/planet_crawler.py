@@ -327,7 +327,7 @@ class Crawler:
         """分析问答主题的内容"""
         question_text = self.analysis_text(content.find_element(By.CLASS_NAME, "question"))
         answer_text = self.analysis_text(content.find_element(By.CLASS_NAME, "answer"))
-        return f"----问题:{question_text}\n----回答:{answer_text}\n"
+        return f"----问题:{question_text}\n----回答:{answer_text}"
 
     def analysis_text(self, element: WebElement):
         """分析text的内容"""
@@ -387,8 +387,8 @@ class Crawler:
 
 
 if __name__ == "__main__":
-    url = r"https://wx.zsxq.com/dweb2/index/group/828241118452"
-    name = r"小乐常旅课"
+    url = r"https://wx.zsxq.com/dweb2/index/group/51288484484424"
+    name = r"枪出如龙"
     # 是否只看星主,是否下载PDF,是否下载图片,是否抓取评论
-    module = Crawler(name, only_owner=False, is_pdf=False, is_img=True, is_comment=True)
-    module.run(url, date="2024.04")
+    module = Crawler(name, only_owner=True, is_pdf=False, is_img=True, is_comment=True)
+    module.run(url, date="0.0")
