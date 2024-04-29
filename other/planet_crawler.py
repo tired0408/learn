@@ -190,7 +190,7 @@ class Crawler:
         """关闭谷歌浏览器"""
         self.driver.quit()
 
-    def run(self, url, date=None):
+    def run(self, url, date="0.0"):
         """
         抓取页面
         :param url: (str); 需要抓取的页面地址
@@ -210,11 +210,8 @@ class Crawler:
                 menu_container.find_element(By.XPATH, "//div[text()=' 只看星主 ']").click()
                 self.wait_content_load()
             # 抓取页面信息
-            if date is None:
-                stop_year, stop_month = 0, 0
-            else:
-                stop_year, stop_month = date.split(".")
-                stop_year, stop_month = int(stop_year), int(stop_month)
+            stop_year, stop_month = date.split(".")
+            stop_year, stop_month = int(stop_year), int(stop_month)
             selector_container = self.driver.find_element(By.TAG_NAME, "app-month-selector")
             if selector_container.is_displayed():
                 for year_selector in selector_container.find_elements(By.TAG_NAME, "div")[1:]:
@@ -387,8 +384,15 @@ class Crawler:
 
 
 if __name__ == "__main__":
-    url = r"https://wx.zsxq.com/dweb2/index/group/51288484484424"
-    name = r"枪出如龙"
-    # 是否只看星主,是否下载PDF,是否下载图片,是否抓取评论
-    module = Crawler(name, only_owner=True, is_pdf=False, is_img=True, is_comment=True)
-    module.run(url, date="0.0")
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-u", "--url", type=str, required=True, help="知识星球的URL")
+    parser.add_argument("-n", "--name", type=str, required=True, help="知识星球的名称")
+    parser.add_argument("-d", "--date", type=str, default="0.0", help="抓取的截至日期,例如:2023.02")
+    parser.add_argument("-o", "--owner", action="store_false", help="是否不看星主,默认只看星主")
+    parser.add_argument("-p", "--pdf", action="store_true", help="是否下载PDF,默认不下载")
+    parser.add_argument("-i", "--img", action="store_false", help="是否下载图片,默认不下载")
+    parser.add_argument("-c", "--comment", action="store_true", help="是否抓取评论,默认不抓取")
+    opt = parser.parse_args()
+    module = Crawler(opt.name, only_owner=opt.owner, is_pdf=opt.pdf, is_img=opt.img, is_comment=opt.comment)
+    module.run(opt.url, date=opt.date)
