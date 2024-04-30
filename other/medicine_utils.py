@@ -2,7 +2,7 @@
 医药网站抓取的通用方法
 """
 import re
-from typing import List
+from typing import Tuple, List
 from queue import Queue
 from datetime import datetime
 from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException
@@ -38,7 +38,7 @@ def clear_and_send(element: WebElement, value):
     element.send_keys(value)
 
 
-def start_http() -> List[HttpServer, Queue]:
+def start_http() -> Tuple[HttpServer, Queue]:
     """
     异步启动HTTP服务,用于获取OCR识别结果,返回数据获取通道
     """
@@ -197,13 +197,13 @@ class INCAWeb:
         end_element = self.driver.find_element(By.NAME, "enddate")
         end_date = datetime.now().strftime("%Y-%m-%d")
         self.driver.execute_script("arguments[0].value = arguments[1]", end_element, end_date)
-        self.driver.find_element(By.XPATH, "//div[@class='modal-footer']/input[@value='查询']").click()
+        self.driver.find_element(By.XPATH, "//div[contains(@class, 'modal-footer')]/input[@value='查询']").click()
 
     def get_table_data(self, deal_func, tree_type, table_type, start_date=None, time_func=None):
         """获取表格数据"""
         self.driver.switch_to.default_content()
         try:
-            xpath = f"//span[text()='{tree_type}']/following-sibling::div[@class='l-expandable-close']"
+            xpath = f"//span[text()='{tree_type}']/preceding-sibling::div[contains(@class, 'l-expandable-close')]"
             self.driver.find_element(By.XPATH, xpath).click()
         except NoSuchElementException:
             print(f"[片仔癀漳州]{tree_type},菜单栏已打开")
@@ -333,13 +333,15 @@ class TCWeb:
                 print(f"输入验证码:{captcha_value}")
                 clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha_value)
                 self.driver.find_element(By.ID, "imgLogin").click()
-                self.wait.until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
+                self.wait.until(EC.presence_of_element_located((By.ID, "btnSearch")))
             except UnexpectedAlertPresentException as e:
                 if e.alert_text == "验证码输入出错":
                     continue
-                else:
-                    raise e
+            except Exception:
+                page = self.driver.page_source
+                print(page)
             break
+        self.wait.until(EC.visibility_of_element_located((By.ID, "btnSearch")))
         print(f"[同春医药]{user}用户已登录")
 
     def get_inventory(self):
@@ -355,7 +357,7 @@ class TCWeb:
                 each_v = each_v.find_elements(By.TAG_NAME, "td")
                 product_name = each_v[1].text + each_v[2].text
                 inventory = int(each_v[6].text)
-                rd.append(product_name, inventory)
+                rd.append([product_name, inventory])
         except NoSuchElementException:
             pass
         print(f"[同春医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
@@ -448,19 +450,24 @@ class DruggcWeb:
         except NoSuchElementException:
             pass
         rd = []
-        try:
-            while True:
-                self.wait.until_not(EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading")))
-                values = self.driver.find_element(By.ID, "dataTable")
-                values = values.find_elements(By.TAG_NAME, "tr")
-                for each_v in values[1:]:
-                    each_v = each_v.find_elements(By.TAG_NAME, "td")
-                    rd.append(deal_func(each_v))
-                page_info = self.driver.find_element(By.CLASS_NAME, "fixed-table-pagination")
-                page_numbers = re.findall(r'\d+', page_info.find_element(By.CLASS_NAME, "pagination-info").text)
-                if page_numbers[-1] == page_numbers[-2]:
-                    break
-                page_info.find_element(By.XPATH, "//li[contains(@class, 'page-next')]/a").click()
-        except NoSuchElementException:
-            pass
+        while True:
+            self.wait.until_not(EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading")))
+            # 网站有个BUG，数据显示太慢，会先显示没有匹配到数据，然后再显示数据
+            try:
+                self.driver.find_element(By.CLASS_NAME, "no-records-found")
+                self.wait.until_not(EC.visibility_of_element_located((By.CLASS_NAME, "no-records-found")))
+            except NoSuchElementException:
+                pass
+            except TimeoutException:
+                break
+            values = self.driver.find_element(By.ID, "dataTable")
+            values = values.find_elements(By.TAG_NAME, "tr")
+            for each_v in values[1:]:
+                each_v = each_v.find_elements(By.TAG_NAME, "td")
+                rd.append(deal_func(each_v))
+            page_info = self.driver.find_element(By.CLASS_NAME, "fixed-table-pagination")
+            page_numbers = re.findall(r'\d+', page_info.find_element(By.CLASS_NAME, "pagination-info").text)
+            if page_numbers[-1] == page_numbers[-2]:
+                break
+            page_info.find_element(By.XPATH, "//li[contains(@class, 'page-next')]/a").click()
         return rd

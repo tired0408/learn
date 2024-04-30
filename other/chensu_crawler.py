@@ -11,7 +11,7 @@ import numpy as np
 import traceback
 from xlwt.Worksheet import Worksheet
 from selenium.webdriver.support.ui import WebDriverWait
-from .medicine_utils import start_http, init_chrome, correct_str, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import start_http, init_chrome, correct_str, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
 
 
 class DataToExcel:
@@ -65,7 +65,7 @@ class DataToExcel:
             self.widths[0] = max(self.widths[0], self.len_byte(client_name))
             write_value = []  # 写入的数据:产品标准名称，数量, 参考信息，备注
             for product_name, [standard_name, reference] in name2standard.items():
-                number = int(np.sum(list(self.data.pop(product_name)))) if product_name in web_data else 0
+                number = int(np.sum(list(web_data.pop(product_name)))) if product_name in web_data else 0
                 if standard_name == "外用红色诺卡氏菌细胞壁骨架":
                     number = number * 2
                 write_value.append([standard_name, number, reference, ""])
@@ -75,7 +75,7 @@ class DataToExcel:
                 write_value.append([product_name, number, "", "未在产品库找到"])
 
             for standard_name, number, reference, remark in write_value:
-                self.ws.write(self.row_i, 0, self.client_name)
+                self.ws.write(self.row_i, 0, client_name)
                 self.ws.write(self.row_i, 1, standard_name)
                 self.ws.write(self.row_i, 2, number)
                 self.ws.write(self.row_i, 3, self.date, self.date_style)
@@ -99,69 +99,66 @@ class DataToExcel:
 
 
 def main(websites_path, chrome_exe_path, save_path, database_path):
-    print("定义所需服务及数据")
-    http_server, q = start_http()
-    driver = init_chrome(chrome_exe_path)
-    wait = WebDriverWait(driver, 5)
-    writer = DataToExcel(save_path, database_path)
-    spfj = SPFJWeb(driver, wait)
-    inca = INCAWeb(driver, wait)
-    luyan = LYWeb(driver, wait)
-    tc = TCWeb(driver, wait, q)
-    druggc = DruggcWeb(driver, wait, q)
-
-    # 开始抓取数据
-    websites = pd.read_excel(websites_path)
-    for _, row in websites.iterrows():
-        # 获取登录信息
-        client_name = correct_str(row.iloc[0])
-        district_name = correct_str(row.iloc[1])
-        website_url = correct_str(row.iloc[2])
-        user = correct_str(row.iloc[3])
-        password = row.iloc[4]
-        password = "" if pd.isna(password) else correct_str(password)
-        # 获取相关数据
-        if website_url == spfj.url:
-            spfj.login(user, password, district_name)
-            for product_name, amount, _ in spfj.get_inventory():
-                writer.data[client_name][product_name].add(amount)
-        elif website_url == inca.url:
-            inca.login(user, password)
-            for product_name, amount in inca.get_inventory():
-                writer.data[client_name][product_name].add(amount)
-        elif website_url == luyan.url:
-            luyan.login(user, password, district_name)
-            for product_name, amount in luyan.get_inventory():
-                writer.data[client_name][product_name].add(amount)
-        elif website_url == tc.url:
-            tc.login(user, password)
-            for product_name, amount in tc.get_inventory():
-                writer.data[client_name][product_name].add(amount)
-        elif website_url == druggc.url:
-            druggc.login(user, password)
-            for product_name, amount in druggc.get_inventory():
-                writer.data[client_name][product_name].add(amount)
-        else:
-            raise Exception("未定义该网站的爬虫抓取方法")
-    print("已完成所有数据写入,开始优化格式")
-    writer.write_to_excel()
-    writer.cell_format()
-    print("脚本已运行完成.")
-
-    print("关闭HTTP服务")
-    http_server.close_server()
-
-
-if __name__ == "__main__":
     try:
-        set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
-        set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
-        set_save_path = r"E:\NewFolder\chensu\库存导入.xls"
-        set_database_path = r"E:\NewFolder\chensu\脚本产品库.xlsx"
-        main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path)
-        print("脚本已运行完成.")
+        print("定义所需服务及数据")
+        http_server, q = start_http()
+        driver = init_chrome(chrome_exe_path)
+        wait = WebDriverWait(driver, 5)
+        writer = DataToExcel(save_path, database_path)
+        spfj = SPFJWeb(driver, wait)
+        inca = INCAWeb(driver, wait)
+        luyan = LYWeb(driver, wait)
+        tc = TCWeb(driver, wait, q)
+        druggc = DruggcWeb(driver, wait, q)
+
+        # 开始抓取数据
+        websites = pd.read_excel(websites_path)
+        for _, row in websites.iterrows():
+            # 获取登录信息
+            client_name = correct_str(row.iloc[0])
+            district_name = correct_str(row.iloc[1])
+            website_url = correct_str(row.iloc[2])
+            user = correct_str(row.iloc[3])
+            password = row.iloc[4]
+            password = "" if pd.isna(password) else correct_str(password)
+            # 获取相关数据
+            if website_url == spfj.url:
+                spfj.login(user, password, district_name)
+                for product_name, amount, _ in spfj.get_inventory():
+                    writer.data[client_name][product_name].add(amount)
+            elif website_url == inca.url:
+                inca.login(user, password)
+                for product_name, amount, _ in inca.get_inventory():
+                    writer.data[client_name][product_name].add(amount)
+            elif website_url == luyan.url:
+                luyan.login(user, password, district_name)
+                for product_name, amount, _ in luyan.get_inventory():
+                    writer.data[client_name][product_name].add(amount)
+            elif website_url == tc.url:
+                tc.login(user, password)
+                for product_name, amount in tc.get_inventory():
+                    writer.data[client_name][product_name].add(amount)
+            elif website_url == druggc.url:
+                druggc.login(user, password, district_name)
+                for product_name, amount, _ in druggc.get_inventory():
+                    writer.data[client_name][product_name].add(amount)
+            else:
+                raise Exception("未定义该网站的爬虫抓取方法")
+        print("已完成所有数据写入,开始优化格式")
+        writer.write_to_excel()
+        writer.cell_format()
+        print("关闭HTTP服务")
+        http_server.close_server()
     except Exception:
         print("-" * 150)
         print("脚本运行出现异常:")
         print(traceback.format_exc())
         print("-" * 150)
+
+
+if __name__ == "__main__":
+    set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
+    set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    set_save_path = r"E:\NewFolder\chensu\库存导入.xls"
+    set_database_path = r"E:\NewFolder\chensu\脚本产品库.xlsx"
+    main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path)

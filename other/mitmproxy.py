@@ -1,6 +1,6 @@
 """
 拦截浏览器响应数据的方法，并识别验证码图片，启动命令：
-mitmdump -s chensu_crawler_mitmproxy.py
+mitmdump -s mitmproxy.py
 """
 import base64
 import requests
