@@ -3,12 +3,14 @@
 XLS属于较老版本,需使用xlwt数据库
 接受OCR识别请求地址,  http://localhost:8557/ocr
 """
+import os
 import xlwt
 import datetime
+import traceback
 import collections
 import pandas as pd
 import numpy as np
-import traceback
+from typing import Tuple
 from xlwt.Worksheet import Worksheet
 from selenium.webdriver.support.ui import WebDriverWait
 from medicine_utils import start_http, init_chrome, correct_str, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
@@ -19,7 +21,7 @@ class DataToExcel:
 
     def __init__(self, save_path, database_path):
         self.save_path = save_path
-        self.database = self.init_production_database(database_path)
+        self.database = self.init_production_database(database_path)  # 产品数据库
         self.data = collections.defaultdict(lambda: collections.defaultdict(set))
         self.widths = [10, 10, 10, 12, 14]
         self.date = datetime.datetime.today()
@@ -29,6 +31,8 @@ class DataToExcel:
         self.row_i = 1
         self.wb = xlwt.Workbook()
         self.ws: Worksheet = self.init_sheet()
+
+        self.breakpoint_set, self.breakpoint_data = self.init_breakpoint(save_path, self.database)
 
     def init_sheet(self) -> Worksheet:
         """初始化单元表"""
@@ -47,6 +51,21 @@ class DataToExcel:
             rd[v0][v1] = [v2, v3]
         return rd
 
+    def init_breakpoint(self, path, database: dict) -> Tuple[set, pd.DataFrame]:
+        """读取断点数据"""
+        if not os.path.exists(path):
+            return None, None
+        rd = pd.read_excel(path)
+        client_names = set(rd["一级商业*"].tolist())
+        name_set = set(database.keys())
+        if len(client_names) == 0 or client_names == name_set:
+            return None, None
+        for cn in client_names:
+            del database[cn]
+        rd.fillna("", inplace=True)
+        print(f"检测到断点,进行断点续查。已抓取数据:{client_names}")
+        return client_names, rd
+
     def save(self):
         self.wb.save(self.save_path)
 
@@ -58,11 +77,17 @@ class DataToExcel:
         length = (utf8_length - length) / 2 + length
         return int(length) + 2
 
-    def write_to_excel(self):
+    def write_to_excel(self, error_client):
         """将数据写入EXCEL表格"""
+        # 写入断点之前的数据
+        if self.breakpoint_data is not None:
+            for row in self.breakpoint_data.itertuples():
+                self.write_row(row[1], row[2], row[3], row[7], row[8])
+        # 写入抓取的数据
         for client_name, name2standard in self.database.items():
+            if error_client is not None and client_name == error_client:
+                break
             web_data = self.data[client_name]
-            self.widths[0] = max(self.widths[0], self.len_byte(client_name))
             write_value = []  # 写入的数据:产品标准名称，数量, 参考信息，备注
             for product_name, [standard_name, reference] in name2standard.items():
                 number = int(np.sum(list(web_data.pop(product_name)))) if product_name in web_data else 0
@@ -75,17 +100,7 @@ class DataToExcel:
                 write_value.append([product_name, number, "", "未在产品库找到"])
 
             for standard_name, number, reference, remark in write_value:
-                self.ws.write(self.row_i, 0, client_name)
-                self.ws.write(self.row_i, 1, standard_name)
-                self.ws.write(self.row_i, 2, number)
-                self.ws.write(self.row_i, 3, self.date, self.date_style)
-                self.ws.write(self.row_i, 4, self.date, self.date_style)
-                self.ws.write(self.row_i, 6, reference)
-                self.ws.write(self.row_i, 7, remark)
-                self.row_i += 1
-
-                self.widths[1] = max(self.widths[1], self.len_byte(standard_name))
-                self.widths[2] = max(self.widths[2], self.len_byte(str(number)))
+                self.write_row(client_name, standard_name, number, reference, remark)
             print(f"[{client_name}]已将数据写入到excel表格中.")
         self.save()
         print("所有数据已全部写入完成")
@@ -97,30 +112,48 @@ class DataToExcel:
         self.save()
         print("格式优化完成")
 
+    def write_row(self, client_name, standard_name, number, reference, remark):
+        """写入行数据"""
+        self.ws.write(self.row_i, 0, client_name)
+        self.ws.write(self.row_i, 1, standard_name)
+        self.ws.write(self.row_i, 2, number)
+        self.ws.write(self.row_i, 3, self.date, self.date_style)
+        self.ws.write(self.row_i, 4, self.date, self.date_style)
+        self.ws.write(self.row_i, 6, reference)
+        self.ws.write(self.row_i, 7, remark)
+        self.row_i += 1
+
+        self.widths[0] = max(self.widths[0], self.len_byte(client_name))
+        self.widths[1] = max(self.widths[1], self.len_byte(standard_name))
+        self.widths[2] = max(self.widths[2], self.len_byte(str(number)))
+
 
 def main(websites_path, chrome_exe_path, save_path, database_path):
-    try:
-        print("定义所需服务及数据")
-        http_server, q = start_http()
-        driver = init_chrome(chrome_exe_path)
-        wait = WebDriverWait(driver, 5)
-        writer = DataToExcel(save_path, database_path)
-        spfj = SPFJWeb(driver, wait)
-        inca = INCAWeb(driver, wait)
-        luyan = LYWeb(driver, wait)
-        tc = TCWeb(driver, wait, q)
-        druggc = DruggcWeb(driver, wait, q)
+    print("定义所需服务及数据")
+    http_server, q = start_http()
+    driver = init_chrome(chrome_exe_path)
+    wait = WebDriverWait(driver, 10)
+    writer = DataToExcel(save_path, database_path)
+    spfj = SPFJWeb(driver, wait)
+    inca = INCAWeb(driver, wait)
+    luyan = LYWeb(driver, wait)
+    tc = TCWeb(driver, wait, q)
+    druggc = DruggcWeb(driver, wait, q)
 
-        # 开始抓取数据
-        websites = pd.read_excel(websites_path)
-        for _, row in websites.iterrows():
-            # 获取登录信息
-            client_name = correct_str(row.iloc[0])
-            district_name = correct_str(row.iloc[1])
-            website_url = correct_str(row.iloc[2])
-            user = correct_str(row.iloc[3])
-            password = row.iloc[4]
-            password = "" if pd.isna(password) else correct_str(password)
+    # 开始抓取数据
+    websites = pd.read_excel(websites_path)
+    for _, row in websites.iterrows():
+        # 获取登录信息
+        client_name = correct_str(row.iloc[0])
+        district_name = correct_str(row.iloc[1])
+        website_url = correct_str(row.iloc[2])
+        user = correct_str(row.iloc[3])
+        password = row.iloc[4]
+        password = "" if pd.isna(password) else correct_str(password)
+        try:
+            if writer.breakpoint_set is not None and client_name in writer.breakpoint_set:
+                print(f"断点之前已查询过:{client_name},{user}")
+                continue
             # 获取相关数据
             if website_url == spfj.url:
                 spfj.login(user, password, district_name)
@@ -144,21 +177,27 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
                     writer.data[client_name][product_name].add(amount)
             else:
                 raise Exception("未定义该网站的爬虫抓取方法")
-        print("已完成所有数据写入,开始优化格式")
-        writer.write_to_excel()
-        writer.cell_format()
-        print("关闭HTTP服务")
-        http_server.close_server()
-    except Exception:
-        print("-" * 150)
-        print("脚本运行出现异常:")
-        print(traceback.format_exc())
-        print("-" * 150)
+        except Exception:
+            error_client = client_name
+            print("-" * 150)
+            print(f"脚本运行出现异常, 出错的截至问题公司:{error_client}")
+            print(traceback.format_exc())
+            print("-" * 150)
+            break
+    else:
+        error_client = None
+    print("开始写入所有数据")
+    writer.write_to_excel(error_client)
+    print("已完成所有数据写入,开始优化格式")
+    writer.cell_format()
+    print("关闭HTTP服务")
+    http_server.close_server()
 
 
 if __name__ == "__main__":
     set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
     set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
-    set_save_path = r"E:\NewFolder\chensu\库存导入.xls"
+    set_save_path = r"E:\NewFolder\chensu\\"
+    set_save_path += f"库存导入{datetime.date.today().strftime('%Y%m%d')}.xls"
     set_database_path = r"E:\NewFolder\chensu\脚本产品库.xlsx"
     main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path)

@@ -2,6 +2,7 @@
 医药网站抓取的通用方法
 """
 import re
+import time
 from typing import Tuple, List
 from queue import Queue
 from datetime import datetime
@@ -58,6 +59,16 @@ def start_http() -> Tuple[HttpServer, Queue]:
     return ocr_http, q
 
 
+def get_url_success(driver: Chrome, url, element_type, element_value):
+    while True:
+        driver.get(url)
+        if driver.title == "502 Bad Gateway":
+            time.sleep(1)
+            continue
+        WebDriverWait(driver, 10).until(EC.visibility_of_element_located((element_type, element_value)))
+        break
+
+
 class SPFJWeb:
     """国控福建网站的数据抓取"""
 
@@ -67,8 +78,7 @@ class SPFJWeb:
         self.wait: WebDriverWait = wait
 
     def login(self, user, password, district_name):
-        self.driver.get(self.url)
-        self.wait.until(EC.visibility_of_element_located((By.ID, "login")))
+        get_url_success(self.driver, self.url, By.ID, "login")
         clear_and_send(self.driver.find_element(By.ID, "user"), user)
         clear_and_send(self.driver.find_element(By.ID, "pwd"), password)
         Select(self.driver.find_element(By.ID, "own")).select_by_visible_text(district_name)
@@ -134,8 +144,7 @@ class INCAWeb:
         self.wait: WebDriverWait = wait
 
     def login(self, user, password):
-        self.driver.get(self.url)
-        self.wait.until(EC.visibility_of_element_located((By.ID, "login_link")))
+        get_url_success(self.driver, self.url, By.ID, "login_link")
         clear_and_send(self.driver.find_element(By.ID, "userName"), user)
         if password == "":
             self.driver.find_element(By.ID, "passWord").clear()
@@ -250,8 +259,7 @@ class LYWeb:
         self.wait: WebDriverWait = wait
 
     def login(self, user, password, district_name):
-        self.driver.get(self.url)
-        self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "buttonsubmit")))
+        get_url_success(self.driver, self.url, By.CLASS_NAME, "buttonsubmit")
         clear_and_send(self.driver.find_element(By.NAME, "username"), user)
         clear_and_send(self.driver.find_element(By.NAME, "loginpwd"), password)
         Select(self.driver.find_element(By.NAME, "select")).select_by_visible_text(district_name)
@@ -323,7 +331,7 @@ class TCWeb:
         self.captcha: Queue = captcha
 
     def login(self, user, password):
-        self.driver.get(self.url)
+        get_url_success(self.driver, self.url, By.ID, "imgLogin")
         while True:
             try:
                 self.wait.until(EC.visibility_of_element_located((By.ID, "imgLogin")))
@@ -374,8 +382,7 @@ class DruggcWeb:
         self.captcha: Queue = captcha
 
     def login(self, user, password, district_name):
-        self.driver.get(self.url)
-        self.wait.until(EC.visibility_of_element_located((By.ID, "login")))
+        get_url_success(self.driver, self.url, By.ID, "login")
         clear_and_send(self.driver.find_element(By.ID, "username"), user)
         clear_and_send(self.driver.find_element(By.ID, "password"), password)
         Select(self.driver.find_element(By.ID, "entryid")).select_by_visible_text(district_name)
