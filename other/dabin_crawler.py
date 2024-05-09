@@ -173,6 +173,8 @@ def main(websites_path, chrome_exe_path, save_path, database_path, week_interval
             raise Exception("未知网站")
     print("将数据写入到excel表格中")
     writer.write_to_excel()
+    print("关闭浏览器")
+    driver.quit()
     print("关闭HTTP服务器")
     http_server.close_server()
 

@@ -386,13 +386,13 @@ class Crawler:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-u", "--url", type=str, required=True, help="知识星球的URL")
-    parser.add_argument("-n", "--name", type=str, required=True, help="知识星球的名称")
-    parser.add_argument("-d", "--date", type=str, default="0.0", help="抓取的截至日期,例如:2023.02")
     parser.add_argument("-o", "--owner", action="store_false", help="是否不看星主,默认只看星主")
     parser.add_argument("-p", "--pdf", action="store_true", help="是否下载PDF,默认不下载")
     parser.add_argument("-i", "--img", action="store_false", help="是否下载图片,默认不下载")
     parser.add_argument("-c", "--comment", action="store_true", help="是否抓取评论,默认不抓取")
+    parser.add_argument("-u", "--url", type=str, required=True, help="知识星球的URL")
+    parser.add_argument("-n", "--name", type=str, required=True, help="知识星球的名称")
+    parser.add_argument("-d", "--date", type=str, default="0.0", help="抓取的截至日期,例如:2023.02")
     opt = parser.parse_args()
     module = Crawler(opt.name, only_owner=opt.owner, is_pdf=opt.pdf, is_img=opt.img, is_comment=opt.comment)
     module.run(opt.url, date=opt.date)

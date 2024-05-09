@@ -190,6 +190,8 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
     writer.write_to_excel(error_client)
     print("已完成所有数据写入,开始优化格式")
     writer.cell_format()
+    print("关闭浏览器")
+    driver.quit()
     print("关闭HTTP服务")
     http_server.close_server()
 
