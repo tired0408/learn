@@ -59,7 +59,7 @@ class DataToExcel:
         """初始化存储数据"""
         # 获取上个月所有日期
         today = datetime.date.today()
-        today = today.replace(month=4)
+        today = today.replace(month=2)
         first_day_of_this_month = today.replace(day=1)
         last_day_of_last_month = first_day_of_this_month - timedelta(days=1)
         year, month = last_day_of_last_month.year, last_day_of_last_month.month
@@ -105,40 +105,61 @@ class DataToExcel:
     def read_general_business(self, path):
         """读取综合营业统计表的相关数据"""
         data = pd.read_excel(path, header=None)
+        change_i = 0
         assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 11] == "渠道营业构成", "表格发生变化，请联系管理员"
         assert data.iloc[3, 23] == "饿了么外卖", "表格发生变化，请联系管理员"
         assert data.iloc[4, 24] == "营业收入（元）", "表格发生变化，请联系管理员"
+        ele_me_i = 25
         assert data.iloc[2, 42] == "营业收入构成", "表格发生变化，请联系管理员"
         assert data.iloc[3, 42] == "现金", "表格发生变化，请联系管理员"
         assert data.iloc[4, 42] == "人民币", "表格发生变化，请联系管理员"
+        cach_i = 43
         assert data.iloc[3, 43] == "扫码支付", "表格发生变化，请联系管理员"
         assert data.iloc[4, 43] == "微信", "表格发生变化，请联系管理员"
         assert data.iloc[4, 44] == "支付宝", "表格发生变化，请联系管理员"
         assert data.iloc[4, 45] == "银联二维码（信用卡）", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 47] == "自定义记账", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 47] == "公关/奖品/活动/无实质性收入（自）", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 48] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 51] == "支付优惠构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 52] == "外卖", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 52] == "饿了么外卖", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 54] == "折扣优惠构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 77] == "小计", "表格发生变化，请联系管理员"
+        # 2024年3月份的表格与2024年1月份的表格存在不同之处
+        if data.iloc[4, 46] == "卡余额消费-储值余额":
+            eat_in_i_list = [44, 45, 46]
+        elif data.iloc[4, 46] == "银联二维码（储蓄卡）":
+            eat_in_i_list = [44, 45, 46, 47]
+            change_i += 1
+        else:
+            raise Exception("表格发生变化，请联系管理员")
+        assert data.iloc[3, 47 + change_i] == "自定义记账", "表格发生变化，请联系管理员"
+        if data.iloc[4, 47 + change_i] == "公关/奖品/活动/无实质性收入（自）":
+            pubilc_relation_income_i = 47 + change_i + 1
+        elif data.iloc[4, 47 + change_i] == "微信收款（店长号收款）（自）":
+            pubilc_relation_income_i = None
+            change_i -= 1
+        else:
+            raise Exception("表格发生变化，请联系管理员")
+        assert data.iloc[4, 48 + change_i] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
+        wechat_i = 48 + change_i + 1
+        assert data.iloc[2, 51 + change_i] == "支付优惠构成", "表格发生变化，请联系管理员"
+        assert data.iloc[3, 52 + change_i] == "外卖", "表格发生变化，请联系管理员"
+        assert data.iloc[4, 52 + change_i] == "饿了么外卖", "表格发生变化，请联系管理员"
+        ele_me_free_i = 52 + change_i + 1
+        assert data.iloc[2].dropna().iloc[-1] == "折扣优惠构成", "表格发生变化，请联系管理员"
+        assert data.iloc[3, -1] == "小计", "表格发生变化，请联系管理员"
+        other_free_i = -1
         for row in data.iloc[5:len(self.days) + 5].itertuples():
             day_str: str = row[1][2:]
             day_str = day_str.replace("/", ".")
             day_data = self.data[day_str]
-            day_data.cash = row[43]
-            day_data.wechat = row[49]
-            day_data.eat_in = row[44] + row[45] + row[46]
-            day_data.ele_me = row[25]
-            day_data.ele_me_free = row[53]
-            day_data.other_free = row[78]
-            day_data.pubilc_relation_income = row[48]
+            day_data.cash = row[cach_i]
+            day_data.wechat = row[wechat_i]
+            day_data.eat_in = sum([row[i] for i in eat_in_i_list])
+            day_data.ele_me = row[ele_me_i]
+            day_data.ele_me_free = row[ele_me_free_i]
+            day_data.other_free = row[other_free_i]
+            day_data.pubilc_relation_income = 0 if pubilc_relation_income_i is None else row[pubilc_relation_income_i]
 
     def read_general_collection(self, path):
         """读取综合收款统计表的相关数据"""
         data = pd.read_excel(path, header=None)
+        change_i = 0
         assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 1] == "业务大类", "表格发生变化，请联系管理员"
         assert data.iloc[2, 2] == "业务小类", "表格发生变化，请联系管理员"
@@ -147,9 +168,24 @@ class DataToExcel:
         assert data.iloc[2, 5] == "扫码支付", "表格发生变化，请联系管理员"
         assert data.iloc[3, 5] == "微信", "表格发生变化，请联系管理员"
         assert data.iloc[3, 6] == "支付宝", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 9] == "自定义记账", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 9] == "公关/奖品/活动/无实质性收入（自）", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 10] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
+        assert data.iloc[3, 7] == "银联二维码（信用卡）", "表格发生变化，请联系管理员"
+        if data.iloc[3, 8] == "卡余额消费-储值余额":
+            scan_i_list = [6, 7, 8]
+        elif data.iloc[3, 8] == "银联二维码（储蓄卡）":
+            scan_i_list = [6, 7, 8, 9]
+            change_i += 1
+        else:
+            raise Exception("表格发生变化，请联系管理员")
+        assert data.iloc[2, 9 + change_i] == "自定义记账", "表格发生变化，请联系管理员"
+        if data.iloc[3, 9 + change_i] == "公关/奖品/活动/无实质性收入（自）":
+            income_i = 9 + change_i + 1
+        elif data.iloc[3, 9 + change_i] == "微信收款（店长号收款）（自）":
+            income_i = None
+            change_i -= 1
+        else:
+            raise Exception("表格发生变化，请联系管理员")
+        assert data.iloc[3, 10 + change_i] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
+        wechat_i = 10 + change_i + 1
         for row in data.iloc[5:].itertuples():
             if row[1] == "合计":
                 break
@@ -160,18 +196,20 @@ class DataToExcel:
                 continue
             if row[3] in ["充值", "撤销充值"]:
                 cash = row[5]
-                wechat = row[11]
+                wechat = row[wechat_i]
                 scan = row[6] + row[7]
-                income = row[10]
+                scan = sum([row[i] for i in scan_i_list])
+                income = 0 if income_i is None else row[income_i]
             elif row[3] == "退卡":
                 cash = -row[5]
                 assert cash <= 0, "退卡金额应该小于0"
-                wechat = -row[11]
+                wechat = -row[wechat_i]
                 assert wechat <= 0, "退卡金额应该小于0"
-                scan = -row[6] - row[7]
-                assert row[6] >= 0, "退卡金额应该小于0"
-                assert row[7] >= 0, "退卡金额应该小于0"
-                income = -row[10]
+                scan = 0
+                for i in scan_i_list:
+                    assert row[i] >= 0, "退卡金额应该小于0"
+                    scan -= row[i]
+                income = 0 if income_i is None else -row[income_i]
                 assert income <= 0, "退卡金额应该小于0"
             else:
                 continue
@@ -214,7 +252,9 @@ class DataToExcel:
         data = pd.read_excel(path, header=None)
         assert data.iloc[2, 0] == "日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 1] == "合计", "表格发生变化，请联系管理员"
-        for row in data.iloc[3:len(self.days) + 3].itertuples():
+        for row in data.iloc[3:].itertuples():
+            if row[1] == "合计":
+                break
             day_str: str = row[1][2:]
             day_str = day_str.replace("-", ".")
             day_data = self.data[day_str]
@@ -422,16 +462,16 @@ class Crawler:
 
     def __download_excel(self, name, submodule: WebElement):
         """导出excel文件并移动到相应文件夹"""
-        # # 清理文件
-        # file_names = os.listdir(self.download_path)
-        # for file_name in file_names:
-        #     if name not in file_name:
-        #         continue
-        #     path = os.path.join(self.download_path, file_name)
-        #     os.remove(path)
-        #     print(f"清理文件:{path}")
-        # # 导出文件
-        # submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
+        # 清理文件
+        file_names = os.listdir(self.download_path)
+        for file_name in file_names:
+            if name not in file_name:
+                continue
+            path = os.path.join(self.download_path, file_name)
+            os.remove(path)
+            print(f"清理文件:{path}")
+        # 导出文件
+        submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
         file_name = self.__wait_download(name)
         self.download_file[name] = file_name
 
@@ -537,20 +577,30 @@ def main(excel_path, chrome_path, download_path, user_path):
     try:
         print("定义所需服务")
         crawler = Crawler(chrome_path, download_path, user_path, os.path.dirname(excel_path))
-        print("登录并打开网站")
-        crawler.login()
-        print("下载综合营业统计表")
-        crawler.report_center_data("营业报表", "综合营业统计")
-        print("下载综合收款统计表的数据")
-        crawler.report_center_data("收款报表", "综合收款统计", crawler.general_collection_condition)
-        print("下载支付结算表的相关数据")
-        crawler.report_center_data("收款报表", "支付结算", crawler.pay_settlement_condition)
-        print("下载储值消费汇总表的数据")
-        crawler.market_center_data("数据报表", "储值消费汇总表", crawler.store_consume_condition)
-        print("下载会员新增情况统计表的相关数据")
-        crawler.market_center_data("用户", "会员新增情况统计表", crawler.newly_increased_method)
-        print("网站上的EXCEL文件已经导出完毕,移动EXCEL到相应位置")
-        crawler.wait_download_finnish()
+        # print("登录并打开网站")
+        # crawler.login()
+        # print("下载综合营业统计表")
+        # crawler.report_center_data("营业报表", "综合营业统计")
+        # print("下载综合收款统计表的数据")
+        # crawler.report_center_data("收款报表", "综合收款统计", crawler.general_collection_condition)
+        # print("下载支付结算表的相关数据")
+        # crawler.report_center_data("收款报表", "支付结算", crawler.pay_settlement_condition)
+        # print("下载储值消费汇总表的数据")
+        # crawler.market_center_data("数据报表", "储值消费汇总表", crawler.store_consume_condition)
+        # print("下载会员新增情况统计表的相关数据")
+        # crawler.market_center_data("用户", "会员新增情况统计表", crawler.newly_increased_method)
+        # print("网站上的EXCEL文件已经导出完毕,移动EXCEL到相应位置")
+        # crawler.wait_download_finnish()
+        # 直接提供excel文件的方法
+        crawler.download_file = {
+            "综合营业统计": "Still_bread_Kit_还是面包厨房_瑞景店__综合营业统计_2024-05-09_15_30_30_a080718h.xlsx",
+            "综合收款统计": "Still_bread_Kit_还是面包厨房_瑞景店__综合收款统计_2024-05-09_15_30_45_a080718h_1715239859563.xlsx",
+            "储值消费汇总表": "Still bread Kit·还是面包厨房（瑞景店）_储值消费汇总表_2024-05-09 15_31_56_a080718h_1715239917787.xlsx",
+            "会员新增情况统计表": "Still bread Kit·还是面包厨房（瑞景店）_会员新增情况统计表_2024-05-09 15_32_23_a080718h_1715239944397.xlsx",
+            "支付结算": "Still_bread_Kit_还是面包厨房_瑞景店__支付结算_2024-05-09_15_31_26_a080718h_1715239888067.xlsx"
+        }
+        for key, value in crawler.download_file.items():
+            crawler.download_file[key] = os.path.join(crawler.save_folder, value)
     except Exception:
         print(traceback.format_exc())
         return
