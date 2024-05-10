@@ -6,19 +6,23 @@ import time
 import shutil
 import requests
 import traceback
+import datetime
 import collections
 from tqdm import tqdm
 from typing import List
 from bs4 import BeautifulSoup
+from datetime import timedelta
 from concurrent.futures import Future
 from concurrent.futures import ThreadPoolExecutor
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.remote.webelement import WebElement
 
 
@@ -27,16 +31,14 @@ class Store:
     def __init__(self, name):
         dir_path = r"E:\NewFolder\zhishi"
         self.txt_path = os.path.join(dir_path, f"{name}.txt")
-        self.img_path = self.init_folder(dir_path, f"{name}的图片")
-        self.img_index = 0
-        self.img_pool = ThreadPoolExecutor(max_workers=10)
-        self.img_tasks = collections.deque()
-        self.annex_path = self.init_folder(dir_path, f"{name}的附件")
+        self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片")
+        self.pool = ThreadPoolExecutor(max_workers=10)
+        self.tasks = collections.deque()
+        self.annex_path, _ = self.init_folder(dir_path, f"{name}的附件")
         self.annex_download_list = collections.deque()
         self.chrome_download = r"D:\Download"
-        self.comment_path = self.init_folder(dir_path, f"{name}的评论")
-        self.comment_index = 0
-        self.f = open(self.txt_path, 'w', encoding='utf-8')
+        self.comment_path, self.comment_index = self.init_folder(dir_path, f"{name}的评论")
+        self.f = open(self.txt_path, 'a', encoding='utf-8')
 
     def __del__(self):
         self.f.close()
@@ -44,20 +46,29 @@ class Store:
     def init_folder(self, folder, name):
         """初始化文件夹"""
         path = os.path.join(folder, name)
-        if os.path.exists(path):
-            return path
-        os.mkdir(path)
-        return path
+        if not os.path.exists(path):
+            os.mkdir(path)
+            return path, 0
+        file_num = len(os.listdir(path))
+        return path, file_num
 
     def write_comment(self, values):
         """写入并生成评论文件夹"""
         self.comment_index += 1
         name = f"{self.comment_index}.txt"
+        # 异步保存评论
+        task = self.pool.submit(self.save_txt_method, name, values)
+        self.tasks.append(task)
+        return name
+
+    def save_txt_method(self, name, values):
+        """保存TXT的方法"""
         txt_path = os.path.join(self.comment_path, name)
         with open(txt_path, "w", encoding="utf-8") as f:
-            for vl in values:
-                f.write(f"{vl}\n")
-        return name
+            for comment_container in values:
+                for comment in comment_container:
+                    f.write(f"{comment}\n")
+                f.write(f"{'-' * 100}\n")
 
     def download_img(self, src):
         """异步下载图片"""
@@ -66,8 +77,8 @@ class Store:
         save_path = os.path.join(self.img_path, img_name)
         if os.path.exists(save_path):
             return img_name
-        task = self.img_pool.submit(self.download_img_method, src, save_path)
-        self.img_tasks.append(task)
+        task = self.pool.submit(self.download_img_method, src, save_path)
+        self.tasks.append(task)
         return img_name
 
     def download_img_method(self, src, target):
@@ -106,16 +117,16 @@ class Store:
         self.annex_download_list.append(name)
         return False
 
-    def wait_img_task(self):
-        """等待图片保存线程完成"""
-        while len(self.img_tasks) != 0:
-            for _ in tqdm(range(len(self.img_tasks))):
-                task: Future = self.img_tasks.popleft()
+    def wait_task(self):
+        """等待保存线程完成"""
+        while len(self.tasks) != 0:
+            for _ in tqdm(range(len(self.tasks))):
+                task: Future = self.tasks.popleft()
                 value = task.result()
                 if value is None:
                     continue
-                task = self.img_pool.submit(self.download_img_method, *value)
-                self.img_tasks.append(task)
+                task = self.pool.submit(self.download_img_method, *value)
+                self.tasks.append(task)
 
     def wait_annex(self):
         """等待附件保存完成"""
@@ -150,22 +161,23 @@ class Store:
 
 class Crawler:
 
-    def __init__(self, name, only_owner=False, is_pdf=False, is_img=False, is_comment=False):
+    def __init__(self, name, is_owner=False, is_pdf=False, is_img=False, comment_name=None):
         """
         初始化
         :param name: (str); 星球名称
-        :param only_owner: (bool); 是否只看星主
+        :param is_owner: (bool); 是否只看星主
         :param is_pdf: (bool); 是否下载PDF
         :param is_img: (bool); 是否下载图片
-        :param is_comment: (bool); 是否抓取评论
+        :param comment_name: (bool); 抓取评论的人名
         """
         self.is_pdf = is_pdf
         self.is_img = is_img
-        self.is_comment = is_comment
+        self.comment_name = comment_name
         self.driver = self.init_chrome()  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
+        self.actions = ActionChains(self.driver)
         self.owner = Store(name)
-        self.member = Store(f"{name}_成员") if not only_owner else None
+        self.member = Store(f"{name}_成员") if not is_owner else None
 
     def init_chrome(self):
         """定义谷歌浏览器"""
@@ -190,11 +202,11 @@ class Crawler:
         """关闭谷歌浏览器"""
         self.driver.quit()
 
-    def run(self, url, date="0.0"):
+    def run(self, url, date: datetime.datetime = None):
         """
         抓取页面
         :param url: (str); 需要抓取的页面地址
-        :param date: (str); 抓取的截至日期,例如:2023.02
+        :param date: (str); 抓取的开始日期,例如:2024.05.10 11:44
         """
         try:
             # 打开登入页面
@@ -210,34 +222,36 @@ class Crawler:
                 menu_container.find_element(By.XPATH, "//div[text()=' 只看星主 ']").click()
                 self.wait_content_load()
             # 抓取页面信息
-            stop_year, stop_month = date.split(".")
-            stop_year, stop_month = int(stop_year), int(stop_month)
             selector_container = self.driver.find_element(By.TAG_NAME, "app-month-selector")
             if selector_container.is_displayed():
-                for year_selector in selector_container.find_elements(By.TAG_NAME, "div")[1:]:
-                    year_name = self.analysis_text(year_selector)
+                year_ele = selector_container.find_elements(By.TAG_NAME, "div")[1:]
+                year_ele.reverse()
+                for year_selector in year_ele:
+                    year_name = int(self.analysis_text(year_selector))
+                    if year_name < date.year:
+                        print(f"跳过{year_name}年,开始日期为:{date}")
+                        continue
                     if "active" not in year_selector.get_attribute("class"):
                         self.driver.execute_script("arguments[0].click();", year_selector)
                         self.wait_content_load()
-                    for month_selector in year_selector.find_element(By.XPATH, "..").find_elements(By.TAG_NAME, "li"):
-                        month_name = self.analysis_text(month_selector)
+                    month_ele = year_selector.find_element(By.XPATH, "..").find_elements(By.TAG_NAME, "li")
+                    month_ele.reverse()
+                    for month_selector in month_ele:
+                        month_name = int(self.analysis_text(month_selector)[:-1])
+                        if month_name < date.month:
+                            print(f"跳过{year_name}年{month_name}月,开始日期为:{date}")
+                            continue
                         if "active" not in month_selector.get_attribute("class"):
                             self.driver.execute_script("arguments[0].click();", month_selector)
                             self.wait_content_load()
-                        try:
-                            self.driver.find_element(By.CLASS_NAME, "no-data")
-                        except NoSuchElementException:
-                            print(f"保存{year_name}年{month_name}的数据")
-                            self.single_page_read()
+                        if len(self.driver.find_elements(By.CLASS_NAME, "no-data")) == 0:
+                            print(f"保存{year_name}年{month_name}月的数据")
+                            if year_name == date.year and month_name == date.month:
+                                self.single_page_read(date)
+                            else:
+                                self.single_page_read()
                         else:
-                            print(f"没有{year_name}年{month_name}的数据")
-                            break
-                        if int(year_name) <= stop_year and int(month_name[:-1]) <= stop_month:
-                            print(f"抓取数据，截至到:{date}")
-                            break
-                    else:
-                        continue
-                    break
+                            print(f"没有{year_name}年{month_name}月的数据")
             else:
                 print("保存最近的所有数据")
                 self.single_page_read()
@@ -246,18 +260,18 @@ class Crawler:
             print("-" * 150)
             print("读取过程中报错")
             print("-" * 150)
-        print("等待作者相关图片的保存完成")
-        self.owner.wait_img_task()
+        print("等待作者相关的保存线程完成")
+        self.owner.wait_task()
         print("等待作者相关附件的保存完成")
         self.owner.wait_annex()
         if self.member is not None:
-            print("等待成员相关图片的保存完成")
-            self.member.wait_img_task()
+            print("等待成员相关的保存线程完成")
+            self.member.wait_task()
             print("等待成员相关附件的保存完成")
             self.member.wait_annex()
         print("爬虫抓取完成")
 
-    def single_page_read(self):
+    def single_page_read(self, start_date=None):
         """单页面读取"""
         # 滚动加载
         while True:
@@ -267,11 +281,7 @@ class Crawler:
             c2 = EC.visibility_of_element_located((By.TAG_NAME, "app-lottie-loading"))
             self.wait.until(EC.any_of(c1, c2))
             # 无更多数据后退出加载
-            try:
-                self.driver.find_element(by=By.CLASS_NAME, value="no-more")
-            except NoSuchElementException:
-                pass
-            else:
+            if len(self.driver.find_elements(by=By.CLASS_NAME, value="no-more")) != 0:
                 break
             # 加载更多卡住
             g_len = self.driver.find_elements(
@@ -279,7 +289,21 @@ class Crawler:
             if len(g_len) != 3:
                 self.driver.execute_script("window.scrollTo(0, -document.body.scrollHeight / 4);")
                 time.sleep(2)
-        for topic_element in tqdm(self.driver.find_elements(By.TAG_NAME, "app-topic")):
+        topics = self.driver.find_elements(By.TAG_NAME, "app-topic")
+        topics.reverse()
+        if start_date is not None:
+            print("开始日期不为空,对数据进行截断")
+            for index in tqdm(range(len(topics))):
+                topic_element = topics[index]
+                date = topic_element.find_element(By.CLASS_NAME, "date").text
+                now_date = datetime.datetime.strptime(date, "%Y-%m-%d %H:%M")
+                if now_date - start_date > timedelta(0):
+                    topics = topics[index:]
+                    break
+            else:
+                raise Exception("开始日期有问题")
+        for topic_element in tqdm(topics):
+            date = topic_element.find_element(By.CLASS_NAME, "date").text
             role = topic_element.find_element(By.CLASS_NAME, "role")
             if self.member is None:
                 store = self.owner
@@ -287,17 +311,16 @@ class Crawler:
                 role_type = role.get_attribute("class").split(" ")[1]
                 store = self.owner if role_type == "owner" else self.member
             role_name = role.text
-            date = topic_element.find_element(By.CLASS_NAME, "date").text
             for name, text_method in {
                 "app-talk-content": self.analysis_talk_or_task,
                 "app-task-content": self.analysis_talk_or_task,
                 "app-answer-content": self.analysis_answer
             }.items():
-                try:
-                    content_container = topic_element.find_element(By.TAG_NAME, name)
-                    break
-                except NoSuchElementException:
+                content_container = topic_element.find_elements(By.TAG_NAME, name)
+                if len(content_container) == 0:
                     continue
+                content_container = content_container[0]
+                break
             else:
                 raise Exception("该主题内容的格式抓取未定义.")
             content = content_container.find_element(By.TAG_NAME, "div")
@@ -334,17 +357,63 @@ class Crawler:
 
     def analysis_and_write_comment(self, topic_element: WebElement, store: Store):
         """分析评论"""
-        if not self.is_comment:
+        if self.comment_name is None:
             return None
-        values = topic_element.find_element(By.CLASS_NAME, "comment-box").find_elements(By.TAG_NAME, "app-comment-item")
+        values = topic_element.find_elements(By.XPATH, ".//div[@class='comment-box']/app-comment-item")
         if len(values) == 0:
             return None
+        # 判断是否有所需评论，没有的话，不点开详情
+        for comment_item in values:
+            if self.judge_comment_need(comment_item):
+                break
+        else:
+            return None
+        # 抓取所需评论
+        detail_button = topic_element.find_element(By.XPATH, ".//div[text()='查看详情']")
+        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", detail_button)
+        detail_button.click()
         rd = []
-        for element in values:
-            date = element.find_element(By.CLASS_NAME, "time").text
-            comment = element.find_element(By.CLASS_NAME, "text").text
-            rd.append(f"({date}){comment}")
+        pattern = (By.XPATH, "//app-topic-detail//div[@class='topic-detail-panel']")
+        WebDriverWait(self.driver, 30).until(EC.element_to_be_clickable(pattern))
+        topic_detail = self.driver.find_element(*pattern)
+        while True:
+            if len(topic_detail.find_elements(By.TAG_NAME, "app-lottie-loading")) == 0:
+                break
+            now_len = len(topic_detail.find_elements(By.CLASS_NAME, "comment-container"))
+            self.actions.move_to_element(topic_detail).click()
+            self.actions.move_to_element(topic_detail).send_keys(Keys.END).perform()
+            try:
+                WebDriverWait(topic_element, 1).until(lambda ele: len(
+                    ele.find_elements(By.CLASS_NAME, "comment-container")) > now_len)
+            except TimeoutException:
+                continue
+            time.sleep(0.1)
+        for comment_container in topic_detail.find_elements(By.CLASS_NAME, "comment-container"):
+            comment_item_list = comment_container.find_elements(By.TAG_NAME, "app-comment-item")
+            for comment_item in comment_item_list:
+                if self.judge_comment_need(comment_item):
+                    break
+            else:
+                continue
+            each_rd = []
+            for comment_item in comment_item_list:
+                date = comment_item.find_element(By.CLASS_NAME, "time").text
+                content = comment_item.find_element(By.CLASS_NAME, "text").text
+                each_rd.append(f"({date}){content}")
+            rd.append(each_rd)
+        self.driver.execute_script("document.elementFromPoint(0, 0).click();")
+        WebDriverWait(self.driver, 10).until_not(EC.visibility_of_element_located((By.TAG_NAME, "app-topic-detail")))
+        if len(rd) == 0:
+            return None
         return store.write_comment(rd)
+
+    def judge_comment_need(self, comment_item: WebElement):
+        """判断评论是否有需要的内容"""
+        comment = comment_item.find_element(By.CLASS_NAME, "comment").text
+        refers = comment_item.find_elements(By.CLASS_NAME, "refer")
+        refer = None if len(refers) == 0 else refers[0].text
+        result = comment == self.comment_name or refer == self.comment_name
+        return result
 
     def analysis_and_download_imgs(self, values: List[WebElement], store: Store):
         """分析并下载图片"""
@@ -365,13 +434,13 @@ class Crawler:
             values = container.find_element(By.TAG_NAME, "app-file-gallery").find_elements(By.CLASS_NAME, "item")
             if len(values) == 0:
                 return []
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", container)
             names = []
             for element in values:
                 name = element.find_element(By.CLASS_NAME, "file-name").text
                 names.append(name)
                 if store.annex_exists(name):
                     continue
+                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
                 element.click()
                 WebDriverWait(container, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
                 container.find_element(By.CLASS_NAME, "download").click()
@@ -386,13 +455,25 @@ class Crawler:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("-o", "--owner", action="store_false", help="是否不看星主,默认只看星主")
+    parser.add_argument("-o", "--owner", action="store_true", help="是否只看星主,默认查看全部")
     parser.add_argument("-p", "--pdf", action="store_true", help="是否下载PDF,默认不下载")
-    parser.add_argument("-i", "--img", action="store_false", help="是否下载图片,默认不下载")
-    parser.add_argument("-c", "--comment", action="store_true", help="是否抓取评论,默认不抓取")
-    parser.add_argument("-u", "--url", type=str, required=True, help="知识星球的URL")
-    parser.add_argument("-n", "--name", type=str, required=True, help="知识星球的名称")
-    parser.add_argument("-d", "--date", type=str, default="0.0", help="抓取的截至日期,例如:2023.02")
-    opt = parser.parse_args()
-    module = Crawler(opt.name, only_owner=opt.owner, is_pdf=opt.pdf, is_img=opt.img, is_comment=opt.comment)
-    module.run(opt.url, date=opt.date)
+    parser.add_argument("-i", "--img", action="store_true", help="是否下载图片,默认不下载")
+    parser.add_argument("-c", "--comment", type=str, default=None, help="抓取评论的名字")
+    parser.add_argument("-d", "--date", type=str, default="1800.01.01_00.00", help="抓取的开始日期,例如:2022.11.30 11-57")
+    parser.add_argument("-u", "--url", type=str, default=None, help="知识星球的URL")
+    parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
+    opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
+    # 测试代码的时候进行修改
+    # opt["owner"] = True
+    # opt["img"] = True
+    # opt["comment"] = "年大"
+    # opt["date"] = "2022.11.30_11.57"
+    # opt["url"] = r"https://wx.zsxq.com/dweb2/index/group/28855211542221"
+    # opt["name"] = "年大"
+    # 验证参数的合规性
+    assert opt["url"] is not None
+    assert opt["name"] is not None
+    opt["date"] = datetime.datetime.strptime(opt["date"], "%Y.%m.%d_%H.%M")
+    module = Crawler(opt["name"], is_owner=opt["owner"], is_pdf=opt["pdf"],
+                     is_img=opt["img"], comment_name=opt["comment"])
+    module.run(opt["url"], date=opt["date"])
