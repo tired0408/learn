@@ -33,7 +33,7 @@ class Store:
         self.txt_path = os.path.join(dir_path, f"{name}.txt")
         self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片")
         self.pool = ThreadPoolExecutor(max_workers=10)
-        self.tasks = collections.deque()
+        self.tasks: List[Future] = []
         self.annex_path, _ = self.init_folder(dir_path, f"{name}的附件")
         self.annex_download_list = collections.deque()
         self.chrome_download = r"D:\Download"
@@ -83,15 +83,19 @@ class Store:
 
     def download_img_method(self, src, target):
         """下载图片的方法"""
-        try:
-            response = requests.get(src)
-            if response.status_code == 200:
+        st = time.time()
+        while True:
+            if time.time() - st > 600:
+                raise Exception("Download image timeout.")
+            try:
+                response = requests.get(src)
+                if response.status_code != 200:
+                    continue
                 with open(target, "wb") as f:
                     f.write(response.content)
-            else:
-                return [src, target]
-        except requests.exceptions.ConnectionError:
-            return [src, target]
+                break
+            except requests.exceptions.ConnectionError:
+                continue
 
     def wait_start_annex_download(self, name):
         """等待附件开始下载"""
@@ -119,14 +123,8 @@ class Store:
 
     def wait_task(self):
         """等待保存线程完成"""
-        while len(self.tasks) != 0:
-            for _ in tqdm(range(len(self.tasks))):
-                task: Future = self.tasks.popleft()
-                value = task.result()
-                if value is None:
-                    continue
-                task = self.pool.submit(self.download_img_method, *value)
-                self.tasks.append(task)
+        for task in self.tasks:
+            task.result()
 
     def wait_annex(self):
         """等待附件保存完成"""
@@ -362,12 +360,13 @@ class Crawler:
         values = topic_element.find_elements(By.XPATH, ".//div[@class='comment-box']/app-comment-item")
         if len(values) == 0:
             return None
-        # 判断是否有所需评论，没有的话，不点开详情
-        for comment_item in values:
-            if self.judge_comment_need(comment_item):
-                break
-        else:
-            return None
+        # TODO 待校验，判断是否有所需评论，没有的话，不点开详情
+        if len(topic_element.find_elements(By.XPATH, ".//span[text()='更多评论']")) == 0:
+            for comment_item in values:
+                if self.judge_comment_need(comment_item):
+                    break
+            else:
+                return None
         # 抓取所需评论
         detail_button = topic_element.find_element(By.XPATH, ".//div[text()='查看详情']")
         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", detail_button)
