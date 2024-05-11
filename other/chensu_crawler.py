@@ -10,9 +10,8 @@ import traceback
 import collections
 import pandas as pd
 import numpy as np
-from typing import Tuple
+from typing import Tuple, List
 from xlwt.Worksheet import Worksheet
-from selenium.webdriver.support.ui import WebDriverWait
 from medicine_utils import start_http, init_chrome, correct_str, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
 
 
@@ -126,73 +125,104 @@ def read_breakpoint(path) -> Tuple[set, pd.DataFrame]:
     return client_names, datas
 
 
-def main(websites_path, chrome_exe_path, save_path, database_path):
-    print("读取断点数据")
-    breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
-    print("定义所需服务及数据")
-    http_server, q = start_http()
-    driver = init_chrome(chrome_exe_path)
-    wait = WebDriverWait(driver, 10)
-    writer = DataToExcel(save_path, database_path)
-    spfj = SPFJWeb(driver, wait)
-    inca = INCAWeb(driver, wait)
-    luyan = LYWeb(driver, wait)
-    tc = TCWeb(driver, wait, q)
-    druggc = DruggcWeb(driver, wait, q)
-    # 开始抓取数据
-    websites = pd.read_excel(websites_path)
+def analyze_website(path, ignore_names):
+    """分析网站数据"""
+    websites = pd.read_excel(path)
+    websites_by_code, websites_no_code = [], []
+    # 网站的验证码情况
+    code_condition = {
+        SPFJWeb.url: False,
+        INCAWeb.url: False,
+        LYWeb.url: False,
+        TCWeb.url: True,
+        DruggcWeb.url: True
+    }
     for _, row in websites.iterrows():
-        # 获取登录信息
-        client_name = correct_str(row.iloc[0])
-        district_name = correct_str(row.iloc[1])
-        website_url = correct_str(row.iloc[2])
-        user = correct_str(row.iloc[3])
-        password = row.iloc[4]
-        password = "" if pd.isna(password) else correct_str(password)
-        if breakpoint_names is not None and client_name in breakpoint_names:
-            print(f"断点之前已查询过:{client_name},{user}")
+        data = {
+            "website_url": correct_str(row.iloc[2]),
+            "client_name": correct_str(row.iloc[0]),
+            "user": correct_str(row.iloc[3]),
+            "password": "" if pd.isna(row.iloc[4]) else correct_str(row.iloc[4]),
+        }
+        if not pd.isna(row.iloc[1]):
+            data["district_name"] = correct_str(row.iloc[1])
+        if ignore_names is not None and data["client_name"] in ignore_names:
+            print(f"断点之前已查询过:{data['client_name']},{data['user']}")
             continue
+        if code_condition[data["website_url"]]:
+            websites_by_code.append(data)
+        else:
+            websites_no_code.append(data)
+    return websites_by_code, websites_no_code
+
+
+def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[dict], exe_path):
+
+    def crawler_general(datas: List[dict], url2method):
+        """抓取的通用方法"""
+        error_client = None
         try:
-            # 获取相关数据
-            if website_url == spfj.url:
-                spfj.login(user, password, district_name)
-                for product_name, amount, _ in spfj.get_inventory():
-                    writer.data[client_name][product_name].add(amount)
-            elif website_url == inca.url:
-                inca.login(user, password)
-                for product_name, amount, _ in inca.get_inventory():
-                    writer.data[client_name][product_name].add(amount)
-            elif website_url == luyan.url:
-                luyan.login(user, password, district_name)
-                for product_name, amount, _ in luyan.get_inventory():
-                    writer.data[client_name][product_name].add(amount)
-            elif website_url == tc.url:
-                tc.login(user, password)
-                for product_name, amount in tc.get_inventory():
-                    writer.data[client_name][product_name].add(amount)
-            elif website_url == druggc.url:
-                druggc.login(user, password, district_name)
-                for product_name, amount, _ in druggc.get_inventory():
-                    writer.data[client_name][product_name].add(amount)
-            else:
-                raise Exception("未定义该网站的爬虫抓取方法")
+            for data in datas:
+                client_name = data.pop("client_name")
+                website_url = data.pop("website_url")
+                method_list = url2method[website_url]
+                method_list[0](**data)
+                for value in method_list[1]():
+                    product_name, amount = [value[i] for i in method_list[2]]
+                    crawler_data[client_name][product_name].add(amount)
         except Exception:
-            error_client = client_name
+            error_client = data["client_name"]
             print("-" * 150)
             print(f"脚本运行出现异常, 出错的截至问题公司:{error_client}")
             print(traceback.format_exc())
             print("-" * 150)
-            break
-    else:
-        error_client = None
-    print("开始写入所有数据")
-    writer.write_to_excel(error_client, breakpoint_datas)
-    print("已完成所有数据写入,开始优化格式")
-    writer.cell_format()
+        return error_client
+    crawler_data = collections.defaultdict(lambda: collections.defaultdict(set))
+    print("抓取无验证码的网站数据")
+    driver = init_chrome(exe_path, False)
+    spfj = SPFJWeb(driver)
+    inca = INCAWeb(driver)
+    luyan = LYWeb(driver)
+    url_condition = {
+        spfj.url: [spfj.login, spfj.get_inventory, [0, 1]],
+        inca.url: [inca.login, inca.get_inventory, [0, 1]],
+        luyan.url: [luyan.login, luyan.get_inventory, [0, 1]],
+    }
+    error_client = crawler_general(websites_no_code, url_condition)
+    if error_client is not None:
+        return error_client, crawler_data
+    print("关闭浏览器")
+    driver.quit()
+    print("抓取有验证码的网站数据")
+    http_server, q = start_http()
+    driver = init_chrome(exe_path)
+    tc = TCWeb(driver, q)
+    druggc = DruggcWeb(driver, q)
+    url_condition = {
+        tc.url: [tc.login, tc.get_inventory, [0, 1]],
+        druggc.url: [druggc.login, druggc.get_inventory, [0, 1]]
+    }
+    error_client = crawler_general(websites_by_code, url_condition)
     print("关闭浏览器")
     driver.quit()
     print("关闭HTTP服务")
     http_server.close_server()
+    return error_client, crawler_data
+
+
+def main(websites_path, chrome_exe_path, save_path, database_path):
+    print("读取断点数据")
+    breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
+    print("读取网站数据，并进行分类")
+    websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
+    error_client, crawler_data = crawler_websites_data(websites_by_code, websites_no_code, chrome_exe_path)
+    print("开始写入所有数据")
+    writer = DataToExcel(save_path, database_path)
+    writer.data.update(crawler_data)
+    writer.write_to_excel(error_client, breakpoint_datas)
+    print("已完成所有数据写入,开始优化格式")
+    writer.cell_format()
+    print("程序运行已完成")
 
 
 if __name__ == "__main__":

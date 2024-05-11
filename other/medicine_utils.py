@@ -18,11 +18,12 @@ from onceorauto.misc.http_server import HttpServer
 
 
 def init_chrome(exe_path, is_proxy=True):
+    """初始化浏览器"""
     service = Service(exe_path)
     options = Options()
     if is_proxy:
         options.add_argument('--proxy-server=127.0.0.1:8080')
-    options.add_argument('ignore-certificate-errors')
+        options.add_argument('ignore-certificate-errors')
     options.add_argument('--log-level=3')
     driver = Chrome(service=service, options=options)
     return driver
@@ -61,22 +62,22 @@ def start_http() -> Tuple[HttpServer, Queue]:
 
 
 def get_url_success(driver: Chrome, url, element_type, element_value):
+    """登录网站"""
     while True:
         driver.get(url)
         if driver.title == "502 Bad Gateway":
             time.sleep(1)
             continue
-        WebDriverWait(driver, 10).until(EC.visibility_of_element_located((element_type, element_value)))
+        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((element_type, element_value)))
         break
 
 
 class SPFJWeb:
     """国控福建网站的数据抓取"""
+    url = r"https://www.sinopharm-fj.com/spfj/flows/"
 
-    def __init__(self, driver, wait) -> None:
-        self.url = r"https://www.sinopharm-fj.com/spfj/flows/"
+    def __init__(self, driver) -> None:
         self.driver: Chrome = driver
-        self.wait: WebDriverWait = wait
 
     def login(self, user, password, district_name):
         get_url_success(self.driver, self.url, By.ID, "login")
@@ -84,7 +85,7 @@ class SPFJWeb:
         clear_and_send(self.driver.find_element(By.ID, "pwd"), password)
         Select(self.driver.find_element(By.ID, "own")).select_by_visible_text(district_name)
         self.driver.find_element(By.ID, "login").click()
-        self.wait.until(EC.visibility_of_element_located((By.ID, "butn")))
+        WebDriverWait(self.driver, 1).until(EC.visibility_of_element_located((By.ID, "butn")))
         print(f"[国控福建]{user}用户已登录")
 
     def purchase_sale_stock(self, start_date=None):
@@ -138,11 +139,10 @@ class SPFJWeb:
 
 class INCAWeb:
     """片仔癀漳州医药有限公司的数据抓取"""
+    url = r"http://59.59.56.90:8094/ns/"
 
-    def __init__(self, driver, wait) -> None:
-        self.url = r"http://59.59.56.90:8094/ns/"
+    def __init__(self, driver) -> None:
         self.driver: Chrome = driver
-        self.wait: WebDriverWait = wait
 
     def login(self, user, password):
         get_url_success(self.driver, self.url, By.ID, "login_link")
@@ -152,9 +152,9 @@ class INCAWeb:
         else:
             clear_and_send(self.driver.find_element(By.ID, "passWord"), password)
         clear_and_send(self.driver.find_element(By.ID, "inputCode"), self.driver.find_element(By.ID, "checkCode").text)
-        self.wait.until(EC.visibility_of_element_located((By.TAG_NAME, "option")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.TAG_NAME, "option")))
         self.driver.find_element(By.ID, "login_link").click()
-        self.wait.until(EC.visibility_of_element_located((By.ID, "tree1")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "tree1")))
         print(f"[片仔癀漳州]{user}用户已登录")
 
     def get_inventory(self):
@@ -198,9 +198,9 @@ class INCAWeb:
     def time_set(self, start_date):
         """时间设置"""
         self.driver.find_element(By.ID, "but_b").click()
-        self.wait.until(EC.visibility_of_element_located((By.ID, "but_con")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "but_con")))
         self.driver.find_element(By.ID, "but_con").click()
-        self.wait.until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
         self.driver.find_element(By.XPATH, "//input[@value='shijian']").click()
         start_element = self.driver.find_element(By.NAME, "startdate")
         self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
@@ -253,11 +253,10 @@ class INCAWeb:
 
 class LYWeb:
     """鹭燕网站的数据抓取"""
+    url = r"http://www.luyan.com.cn/index.php"
 
-    def __init__(self, driver, wait) -> None:
-        self.url = r"http://www.luyan.com.cn/index.php"
+    def __init__(self, driver) -> None:
         self.driver: Chrome = driver
-        self.wait: WebDriverWait = wait
 
     def login(self, user, password, district_name):
         get_url_success(self.driver, self.url, By.CLASS_NAME, "buttonsubmit")
@@ -265,7 +264,7 @@ class LYWeb:
         clear_and_send(self.driver.find_element(By.NAME, "loginpwd"), password)
         Select(self.driver.find_element(By.NAME, "select")).select_by_visible_text(district_name)
         self.driver.find_element(By.CLASS_NAME, "buttonsubmit").click()
-        self.wait.until(EC.visibility_of_element_located((By.NAME, "menu")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.NAME, "menu")))
         print(f"[鹭燕]{user}用户已登录")
 
     def get_inventory(self):
@@ -324,25 +323,24 @@ class LYWeb:
 
 class TCWeb:
     """同春医药网站的数据抓取"""
+    url = r"http://tc.tcyy.com.cn:8888/exm/login.jsp"
 
-    def __init__(self, driver, wait, captcha) -> None:
-        self.url = r"http://tc.tcyy.com.cn:8888/exm/login.jsp"
+    def __init__(self, driver, captcha) -> None:
         self.driver: Chrome = driver
-        self.wait: WebDriverWait = wait
         self.captcha: Queue = captcha
 
     def login(self, user, password):
         get_url_success(self.driver, self.url, By.ID, "imgLogin")
         while True:
             try:
-                self.wait.until(EC.visibility_of_element_located((By.ID, "imgLogin")))
+                WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "imgLogin")))
                 clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
                 clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
                 captcha_value = self.captcha.get(timeout=5)
                 print(f"输入验证码:{captcha_value}")
                 clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha_value)
                 self.driver.find_element(By.ID, "imgLogin").click()
-                self.wait.until(EC.presence_of_element_located((By.ID, "btnSearch")))
+                WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "btnSearch")))
             except UnexpectedAlertPresentException as e:
                 if e.alert_text == "验证码输入出错":
                     continue
@@ -350,7 +348,7 @@ class TCWeb:
                 page = self.driver.page_source
                 print(page)
             break
-        self.wait.until(EC.visibility_of_element_located((By.ID, "btnSearch")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "btnSearch")))
         print(f"[同春医药]{user}用户已登录")
 
     def get_inventory(self):
@@ -358,7 +356,7 @@ class TCWeb:
         获取库存数据
         :return: [(商品名称, 库存数量), ...]
         """
-        self.wait.until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
         rd = []
         try:
             values = self.driver.find_element(By.XPATH, "//table[@border='1']").find_elements(By.TAG_NAME, "tr")
@@ -375,11 +373,10 @@ class TCWeb:
 
 class DruggcWeb:
     """片仔癀宏仁医药有限公司网站的数据抓取"""
+    url = r"http://117.29.176.58:8860/drugqc/home/login?type=flowLogin"
 
-    def __init__(self, driver, wait, captcha) -> None:
-        self.url = r"http://117.29.176.58:8860/drugqc/home/login?type=flowLogin"
+    def __init__(self, driver, captcha) -> None:
         self.driver: Chrome = driver
-        self.wait: WebDriverWait = wait
         self.captcha: Queue = captcha
 
     def login(self, user, password, district_name):
@@ -402,7 +399,7 @@ class DruggcWeb:
             else:
                 print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
             self.driver.find_element(By.ID, "captchaImg").click()
-        self.wait.until(EC.visibility_of_element_located((By.ID, "side-menu")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "side-menu")))
         print(f"[片仔癀宏仁医药]{user}用户已登录")
 
     def get_inventory(self):
@@ -459,11 +456,13 @@ class DruggcWeb:
             pass
         rd = []
         while True:
-            self.wait.until_not(EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading")))
+            condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
+            WebDriverWait(self.driver, 10).until_not(condition)
             # 网站有个BUG，数据显示太慢，会先显示没有匹配到数据，然后再显示数据
             try:
                 self.driver.find_element(By.CLASS_NAME, "no-records-found")
-                self.wait.until_not(EC.visibility_of_element_located((By.CLASS_NAME, "no-records-found")))
+                condition = EC.visibility_of_element_located((By.CLASS_NAME, "no-records-found"))
+                WebDriverWait(self.driver, 10).until_not(condition)
             except NoSuchElementException:
                 pass
             except TimeoutException:
