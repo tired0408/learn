@@ -49,9 +49,10 @@ class PerDayData:
 
 class DataToExcel:
 
-    def __init__(self, path) -> None:
+    def __init__(self, path, save_name) -> None:
         self.data, self.days = self.init_data()
-        self.path = path
+        self.save_name = save_name
+        self.save_folder = os.path.dirname(path)
         self.wb = load_workbook(path)
         self.ws = self.wb.active
 
@@ -59,7 +60,8 @@ class DataToExcel:
         """初始化存储数据"""
         # 获取上个月所有日期
         today = datetime.date.today()
-        today = today.replace(month=2)
+        # TODO
+        today = today.replace(month=3)
         first_day_of_this_month = today.replace(day=1)
         last_day_of_last_month = first_day_of_this_month - timedelta(days=1)
         year, month = last_day_of_last_month.year, last_day_of_last_month.month
@@ -100,10 +102,11 @@ class DataToExcel:
             self.ws.cell(row_index, 32, day_data.pubilc_relation_paid)
             self.ws.cell(row_index, 33, day_data.pubilc_relation_income)
         # 保存文件
-        self.wb.save(self.path)
+        self.wb.save(os.path.join(self.save_folder, self.save_name["结果"]))
 
-    def read_general_business(self, path):
+    def read_general_business(self):
         """读取综合营业统计表的相关数据"""
+        path = os.path.join(self.save_folder, self.save_name["综合营业统计"])
         data = pd.read_excel(path, header=None)
         change_i = 0
         assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
@@ -156,8 +159,9 @@ class DataToExcel:
             day_data.other_free = row[other_free_i]
             day_data.pubilc_relation_income = 0 if pubilc_relation_income_i is None else row[pubilc_relation_income_i]
 
-    def read_general_collection(self, path):
+    def read_general_collection(self):
         """读取综合收款统计表的相关数据"""
+        path = os.path.join(self.save_folder, self.save_name["综合收款统计"])
         data = pd.read_excel(path, header=None)
         change_i = 0
         assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
@@ -228,8 +232,9 @@ class DataToExcel:
             assert len(day_data.pubilc_relation_paid) <= 3, "公关/奖品/活动/无实质性收入的充值、退卡数据各自最多只有一条"
             day_data.pubilc_relation_paid = sum(day_data.pubilc_relation_paid)
 
-    def read_store_consume(self, path):
+    def read_store_consume(self):
         """读取储值消费汇总表的相关数据"""
+        path = os.path.join(self.save_folder, self.save_name["储值消费汇总表"])
         data = pd.read_excel(path, header=None)
         assert data.iloc[2, 0] == "日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 1] == "储值合计", "表格发生变化，请联系管理员"
@@ -247,8 +252,9 @@ class DataToExcel:
             day_data.main_paid = row[2]
             day_data.gift_paid = row[3]
 
-    def read_newly_increased(self, path):
+    def read_newly_increased(self):
         """"读取会员新增情况统计表的相关数据"""
+        path = os.path.join(self.save_folder, self.save_name["会员新增情况统计表"])
         data = pd.read_excel(path, header=None)
         assert data.iloc[2, 0] == "日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 1] == "合计", "表格发生变化，请联系管理员"
@@ -260,8 +266,9 @@ class DataToExcel:
             day_data = self.data[day_str]
             day_data.new_member = row[2]
 
-    def read_pay_settlement(self, path):
+    def read_pay_settlement(self):
         """读取支付结算表的相关数据"""
+        path = os.path.join(self.save_folder, self.save_name["支付结算"])
         data = pd.read_excel(path, header=None)
         assert data.iloc[2, 2] == "结算日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 3] == "交易金额(元)", "表格发生变化，请联系管理员"
@@ -456,7 +463,7 @@ class Crawler:
         # 移动下载文件
         for key, file_name in self.download_file.items():
             src = os.path.join(self.download_path, file_name)
-            dst = os.path.join(self.save_folder, file_name)
+            dst = os.path.join(self.save_folder, save_name[key])
             shutil.move(src, dst)
             self.download_file[key] = dst
 
@@ -572,58 +579,62 @@ class Crawler:
         return file_name
 
 
-def main(excel_path, chrome_path, download_path, user_path):
-    warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
+def main(excel_path, chrome_path, download_path, user_path, save_name):
     try:
         print("定义所需服务")
         crawler = Crawler(chrome_path, download_path, user_path, os.path.dirname(excel_path))
-        # print("登录并打开网站")
-        # crawler.login()
-        # print("下载综合营业统计表")
-        # crawler.report_center_data("营业报表", "综合营业统计")
-        # print("下载综合收款统计表的数据")
-        # crawler.report_center_data("收款报表", "综合收款统计", crawler.general_collection_condition)
-        # print("下载支付结算表的相关数据")
-        # crawler.report_center_data("收款报表", "支付结算", crawler.pay_settlement_condition)
-        # print("下载储值消费汇总表的数据")
-        # crawler.market_center_data("数据报表", "储值消费汇总表", crawler.store_consume_condition)
-        # print("下载会员新增情况统计表的相关数据")
-        # crawler.market_center_data("用户", "会员新增情况统计表", crawler.newly_increased_method)
-        # print("网站上的EXCEL文件已经导出完毕,移动EXCEL到相应位置")
-        # crawler.wait_download_finnish()
-        # 直接提供excel文件的方法
-        crawler.download_file = {
-            "综合营业统计": "Still_bread_Kit_还是面包厨房_瑞景店__综合营业统计_2024-05-09_15_30_30_a080718h.xlsx",
-            "综合收款统计": "Still_bread_Kit_还是面包厨房_瑞景店__综合收款统计_2024-05-09_15_30_45_a080718h_1715239859563.xlsx",
-            "储值消费汇总表": "Still bread Kit·还是面包厨房（瑞景店）_储值消费汇总表_2024-05-09 15_31_56_a080718h_1715239917787.xlsx",
-            "会员新增情况统计表": "Still bread Kit·还是面包厨房（瑞景店）_会员新增情况统计表_2024-05-09 15_32_23_a080718h_1715239944397.xlsx",
-            "支付结算": "Still_bread_Kit_还是面包厨房_瑞景店__支付结算_2024-05-09_15_31_26_a080718h_1715239888067.xlsx"
-        }
-        for key, value in crawler.download_file.items():
-            crawler.download_file[key] = os.path.join(crawler.save_folder, value)
+        print("登录并打开网站")
+        crawler.login()
+        print("下载综合营业统计表")
+        crawler.report_center_data("营业报表", "综合营业统计")
+        print("下载综合收款统计表的数据")
+        crawler.report_center_data("收款报表", "综合收款统计", crawler.general_collection_condition)
+        print("下载支付结算表的相关数据")
+        crawler.report_center_data("收款报表", "支付结算", crawler.pay_settlement_condition)
+        print("下载储值消费汇总表的数据")
+        crawler.market_center_data("数据报表", "储值消费汇总表", crawler.store_consume_condition)
+        print("下载会员新增情况统计表的相关数据")
+        crawler.market_center_data("用户", "会员新增情况统计表", crawler.newly_increased_method)
+        print("等待网站上的EXCEL文件导出完毕,并移动EXCEL到相应位置")
+        crawler.wait_download_finnish(save_name)
+        print("退出浏览器")
+        crawler.driver.quit()
     except Exception:
         print(traceback.format_exc())
         return
     print("定义数据保存类")
-    writer = DataToExcel(excel_path)
+    warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
+    writer = DataToExcel(excel_path, save_name)
     print("读取综合营业统计表的数据")
-    writer.read_general_business(crawler.download_file["综合营业统计"])
+    writer.read_general_business()
     print("读取综合收款统计表的数据")
-    writer.read_general_collection(crawler.download_file["综合收款统计"])
+    writer.read_general_collection()
     print("读取储值消费汇总表的数据")
-    writer.read_store_consume(crawler.download_file["储值消费汇总表"])
+    writer.read_store_consume()
     print("读取会员新增情况统计表的相关数据")
-    writer.read_newly_increased(crawler.download_file["会员新增情况统计表"])
+    writer.read_newly_increased()
     print("读取支付结算表的相关数据")
-    writer.read_pay_settlement(crawler.download_file["支付结算"])
+    writer.read_pay_settlement()
     print("将数据写入定义好的excel模板中")
     writer.write_and_save()
     print("程序运行完成")
 
 
 if __name__ == "__main__":
-    set_file_path = r"E:\NewFolder\xiayun\source.xlsx"
+    set_file_path = r"E:\NewFolder\xiayun\template.xlsx"
     set_user_path = r'C:\Users\Administrator\AppData\Local\Google\Chrome\User Data'
     set_chrome_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
     set_download_path = r"D:\Download"
-    main(set_file_path, set_chrome_path, set_download_path, set_user_path)
+    date_str = datetime.datetime.today()
+    # TODO
+    date_str = date_str.replace(month=2)
+    date_str = date_str.strftime("%Y%m")
+    save_name = {
+        "结果": f"营业明细表{date_str}.xlsx",
+        "综合营业统计": f"综合营业统计{date_str}.xlsx",
+        "综合收款统计": f"综合收款统计{date_str}.xlsx",
+        "储值消费汇总表": f"储值消费汇总表{date_str}.xlsx",
+        "会员新增情况统计表": f"会员新增情况统计表{date_str}.xlsx",
+        "支付结算": f"支付结算{date_str}.xlsx"
+    }
+    main(set_file_path, set_chrome_path, set_download_path, set_user_path, save_name)
