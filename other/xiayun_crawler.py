@@ -49,29 +49,13 @@ class PerDayData:
 
 class DataToExcel:
 
-    def __init__(self, path, save_name) -> None:
-        self.data, self.days = self.init_data()
+    def __init__(self, path, data: Dict[str, PerDayData], days, save_name) -> None:
+        self.data = data
+        self.days = days
         self.save_name = save_name
         self.save_folder = os.path.dirname(path)
         self.wb = load_workbook(path)
         self.ws = self.wb.active
-
-    def init_data(self) -> Tuple[Dict[str, PerDayData], List[str]]:
-        """初始化存储数据"""
-        # 获取上个月所有日期
-        today = datetime.date.today()
-        # TODO
-        today = today.replace(month=3)
-        first_day_of_this_month = today.replace(day=1)
-        last_day_of_last_month = first_day_of_this_month - timedelta(days=1)
-        year, month = last_day_of_last_month.year, last_day_of_last_month.month
-        num_days = calendar.monthrange(year, month)[1]
-        data, days = {}, []
-        for day in range(1, num_days + 1):
-            day_str = datetime.date(year, month, day).strftime("%y.%m.%d")
-            data[day_str] = PerDayData()
-            days.append(day_str)
-        return data, days
 
     def write_and_save(self):
         # TODO 调整EXCEL，新增或删除行，暂时人工处理
@@ -147,8 +131,11 @@ class DataToExcel:
         assert data.iloc[2].dropna().iloc[-1] == "折扣优惠构成", "表格发生变化，请联系管理员"
         assert data.iloc[3, -1] == "小计", "表格发生变化，请联系管理员"
         other_free_i = -1
-        for row in data.iloc[5:len(self.days) + 5].itertuples():
-            day_str: str = row[1][2:]
+        for row in data.iloc[5:].itertuples():
+            day_str = row[1]
+            if day_str == "合计":
+                break
+            day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.data[day_str]
             day_data.cash = row[cach_i]
@@ -191,9 +178,10 @@ class DataToExcel:
         assert data.iloc[3, 10 + change_i] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
         wechat_i = 10 + change_i + 1
         for row in data.iloc[5:].itertuples():
-            if row[1] == "合计":
+            day_str = row[1]
+            if day_str == "合计":
                 break
-            day_str: str = row[1][2:]
+            day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.data[day_str]
             if row[2] != "会员充值":
@@ -243,8 +231,11 @@ class DataToExcel:
         assert data.iloc[2, 4] == "消费合计", "表格发生变化，请联系管理员"
         assert data.iloc[3, 4] == "储值余额", "表格发生变化，请联系管理员"
         assert data.iloc[3, 5] == "赠送余额", "表格发生变化，请联系管理员"
-        for row in data.iloc[4:len(self.days) + 4].itertuples():
-            day_str: str = row[1][2:]
+        for row in data.iloc[4:].itertuples():
+            day_str = row[1]
+            if day_str == "合计":
+                break
+            day_str: str = day_str[2:]
             day_str = day_str.replace("-", ".")
             day_data = self.data[day_str]
             day_data.main_consume = row[5]
@@ -274,7 +265,10 @@ class DataToExcel:
         assert data.iloc[2, 3] == "交易金额(元)", "表格发生变化，请联系管理员"
         assert data.iloc[2, 5] == "手续费(元)", "表格发生变化，请联系管理员"
         for row in data.iloc[3:len(self.days) + 3].itertuples():
-            day_str: str = row[3][2:]
+            day_str = row[3]
+            if pd.isna(day_str):
+                break
+            day_str: str = day_str[2:]
             day_str = day_str.replace("-", ".")
             day_data = self.data[day_str]
             day_data.hand_charge = row[6]
@@ -407,7 +401,7 @@ class Crawler:
             "会员新增情况统计表": '/web/member/statistic/member-increase#/'
         }
         pattern = (By.XPATH, f".//iframe[@data-current-url='{name2url[name]}']")
-        WebDriverWait(module, 10).until(EC.visibility_of_element_located(pattern))
+        WebDriverWait(module, 60).until(EC.visibility_of_element_located(pattern))
         iframe = module.find_element(*pattern)
         self.driver.switch_to.frame(iframe)
         # 各个模块的条件设置
@@ -451,7 +445,7 @@ class Crawler:
         WebDriverWait(submodule, 10).until(EC.presence_of_element_located(pattern))
         self.__download_excel(name, submodule)
 
-    def wait_download_finnish(self):
+    def wait_download_finnish(self, save_name):
         # 等到下载完成
         for _, file_name in self.download_file.items():
             st = time.time()
@@ -579,7 +573,35 @@ class Crawler:
         return file_name
 
 
-def main(excel_path, chrome_path, download_path, user_path, save_name):
+def init_data() -> Tuple[Dict[str, PerDayData], List[str]]:
+    """初始化存储数据"""
+    # 获取上个月所有日期
+    today = datetime.date.today()
+    first_day_of_this_month = today.replace(day=1)
+    last_day_of_last_month = first_day_of_this_month - timedelta(days=1)
+    year, month = last_day_of_last_month.year, last_day_of_last_month.month
+    num_days = calendar.monthrange(year, month)[1]
+    data, days = {}, []
+    for day in range(1, num_days + 1):
+        day_str = datetime.date(year, month, day).strftime("%y.%m.%d")
+        data[day_str] = PerDayData()
+        days.append(day_str)
+    # 定义存储名字
+    date_str = last_day_of_last_month.strftime("%Y%m")
+    save_name = {
+        "结果": f"营业明细表{date_str}.xlsx",
+        "综合营业统计": f"综合营业统计{date_str}.xlsx",
+        "综合收款统计": f"综合收款统计{date_str}.xlsx",
+        "储值消费汇总表": f"储值消费汇总表{date_str}.xlsx",
+        "会员新增情况统计表": f"会员新增情况统计表{date_str}.xlsx",
+        "支付结算": f"支付结算{date_str}.xlsx"
+    }
+    print(f"已定义了:{date_str}的数据")
+    return data, days, save_name
+
+
+def main(excel_path, chrome_path, download_path, user_path):
+    save_data, last_days, save_name = init_data()
     try:
         print("定义所需服务")
         crawler = Crawler(chrome_path, download_path, user_path, os.path.dirname(excel_path))
@@ -604,7 +626,7 @@ def main(excel_path, chrome_path, download_path, user_path, save_name):
         return
     print("定义数据保存类")
     warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
-    writer = DataToExcel(excel_path, save_name)
+    writer = DataToExcel(excel_path, save_data, last_days, save_name)
     print("读取综合营业统计表的数据")
     writer.read_general_business()
     print("读取综合收款统计表的数据")
@@ -626,15 +648,4 @@ if __name__ == "__main__":
     set_chrome_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
     set_download_path = r"D:\Download"
     date_str = datetime.datetime.today()
-    # TODO
-    date_str = date_str.replace(month=2)
-    date_str = date_str.strftime("%Y%m")
-    save_name = {
-        "结果": f"营业明细表{date_str}.xlsx",
-        "综合营业统计": f"综合营业统计{date_str}.xlsx",
-        "综合收款统计": f"综合收款统计{date_str}.xlsx",
-        "储值消费汇总表": f"储值消费汇总表{date_str}.xlsx",
-        "会员新增情况统计表": f"会员新增情况统计表{date_str}.xlsx",
-        "支付结算": f"支付结算{date_str}.xlsx"
-    }
-    main(set_file_path, set_chrome_path, set_download_path, set_user_path, save_name)
+    main(set_file_path, set_chrome_path, set_download_path, set_user_path)
