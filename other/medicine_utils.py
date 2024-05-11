@@ -17,10 +17,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from onceorauto.misc.http_server import HttpServer
 
 
-def init_chrome(exe_path):
+def init_chrome(exe_path, is_proxy=True):
     service = Service(exe_path)
     options = Options()
-    options.add_argument('--proxy-server=127.0.0.1:8080')
+    if is_proxy:
+        options.add_argument('--proxy-server=127.0.0.1:8080')
     options.add_argument('ignore-certificate-errors')
     options.add_argument('--log-level=3')
     driver = Chrome(service=service, options=options)

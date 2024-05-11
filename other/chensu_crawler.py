@@ -32,8 +32,6 @@ class DataToExcel:
         self.wb = xlwt.Workbook()
         self.ws: Worksheet = self.init_sheet()
 
-        self.breakpoint_set, self.breakpoint_data = self.init_breakpoint(save_path, self.database)
-
     def init_sheet(self) -> Worksheet:
         """初始化单元表"""
         rd: Worksheet = self.wb.add_sheet("商业库存导入模板")
@@ -51,21 +49,6 @@ class DataToExcel:
             rd[v0][v1] = [v2, v3]
         return rd
 
-    def init_breakpoint(self, path, database: dict) -> Tuple[set, pd.DataFrame]:
-        """读取断点数据"""
-        if not os.path.exists(path):
-            return None, None
-        rd = pd.read_excel(path)
-        client_names = set(rd["一级商业*"].tolist())
-        name_set = set(database.keys())
-        if len(client_names) == 0 or client_names == name_set:
-            return None, None
-        for cn in client_names:
-            del database[cn]
-        rd.fillna("", inplace=True)
-        print(f"检测到断点,进行断点续查。已抓取数据:{client_names}")
-        return client_names, rd
-
     def save(self):
         self.wb.save(self.save_path)
 
@@ -77,16 +60,20 @@ class DataToExcel:
         length = (utf8_length - length) / 2 + length
         return int(length) + 2
 
-    def write_to_excel(self, error_client):
+    def write_to_excel(self, error_client, breakpoint_data: pd.DataFrame):
         """将数据写入EXCEL表格"""
         # 写入断点之前的数据
-        if self.breakpoint_data is not None:
-            for row in self.breakpoint_data.itertuples():
+        if breakpoint_data is not None:
+            for row in breakpoint_data.itertuples():
                 self.write_row(row[1], row[2], row[3], row[7], row[8])
         # 写入抓取的数据
         for client_name, name2standard in self.database.items():
+            # 报错的那个客户，所有账号数据都不记录
             if error_client is not None and client_name == error_client:
-                break
+                continue
+            # 没有抓取这个网站的数据，则跳过
+            if client_name not in self.data:
+                continue
             web_data = self.data[client_name]
             write_value = []  # 写入的数据:产品标准名称，数量, 参考信息，备注
             for product_name, [standard_name, reference] in name2standard.items():
@@ -128,7 +115,20 @@ class DataToExcel:
         self.widths[2] = max(self.widths[2], self.len_byte(str(number)))
 
 
+def read_breakpoint(path) -> Tuple[set, pd.DataFrame]:
+    """读取断点数据"""
+    if not os.path.exists(path):
+        return None, None
+    datas = pd.read_excel(path)
+    client_names = set(datas["一级商业*"].tolist())
+    datas.fillna("", inplace=True)
+    print(f"检测到断点,进行断点续查。已抓取数据:{client_names}")
+    return client_names, datas
+
+
 def main(websites_path, chrome_exe_path, save_path, database_path):
+    print("读取断点数据")
+    breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
     print("定义所需服务及数据")
     http_server, q = start_http()
     driver = init_chrome(chrome_exe_path)
@@ -139,7 +139,6 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
     luyan = LYWeb(driver, wait)
     tc = TCWeb(driver, wait, q)
     druggc = DruggcWeb(driver, wait, q)
-
     # 开始抓取数据
     websites = pd.read_excel(websites_path)
     for _, row in websites.iterrows():
@@ -150,10 +149,10 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
         user = correct_str(row.iloc[3])
         password = row.iloc[4]
         password = "" if pd.isna(password) else correct_str(password)
+        if breakpoint_names is not None and client_name in breakpoint_names:
+            print(f"断点之前已查询过:{client_name},{user}")
+            continue
         try:
-            if writer.breakpoint_set is not None and client_name in writer.breakpoint_set:
-                print(f"断点之前已查询过:{client_name},{user}")
-                continue
             # 获取相关数据
             if website_url == spfj.url:
                 spfj.login(user, password, district_name)
@@ -187,7 +186,7 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
     else:
         error_client = None
     print("开始写入所有数据")
-    writer.write_to_excel(error_client)
+    writer.write_to_excel(error_client, breakpoint_datas)
     print("已完成所有数据写入,开始优化格式")
     writer.cell_format()
     print("关闭浏览器")
