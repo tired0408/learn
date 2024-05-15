@@ -94,15 +94,28 @@ class GetOperateDetail:
 
     def __init__(self, path) -> None:
         self.save_data = self.init_save_data()
-        self.wb = load_workbook(path)
+        self.wb = self.init_excel(path)
         self.ws = self.wb.active
+
+    def init_excel(self, path):
+        """调整营业明细表的模板"""
+        days_len = len(GOL.days)
+        if days_len == 31:
+            return load_workbook(path)
+        with xw.App(visible=False) as app:
+            with app.books.open(path) as wb:
+                ws = wb.sheets["营业月报"]
+                for i in range(31 - days_len):
+                    del_row = 35 - i
+                    ws.range(f'{del_row}:{del_row}').api.EntireRow.Delete(Shift=-4162)
+                wb.save(GOL.save_path.operate_detail)
+        return load_workbook(GOL.save_path.operate_detail)
 
     def init_save_data(self) -> Dict[str, PerDayData]:
         """初始化每天的保存数据"""
         return {key: PerDayData() for key in GOL.days}
 
     def write_and_save(self):
-        # TODO 调整EXCEL，新增或删除行，暂时人工处理
         # 设置开始、结束时间
         self.ws.cell(2, 2, GOL.days[0])
         self.ws.cell(3, 2, GOL.days[-1])
