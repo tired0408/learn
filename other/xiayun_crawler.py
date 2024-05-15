@@ -3,7 +3,6 @@
 """
 import os
 import time
-import math
 import shutil
 import warnings
 import calendar
@@ -369,11 +368,11 @@ class DadaCrawler(WebCrawler):
         WebDriverWait(self._driver, 10).until(EC.visibility_of(load_icon))
         WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(load_icon))
         # 申请报表下载
-        # btn_str = "//div[text()='Still bread 还是面包厨房（华瑞花园1期店）']/../..//span[text()='下载门店订单明细']"
-        # self._driver.find_element(By.XPATH, btn_str).click()
-        # ele = WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
-        # ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "close")))
-        # ele.click()
+        btn_str = "//div[text()='Still bread 还是面包厨房（华瑞花园1期店）']/../..//span[text()='下载门店订单明细']"
+        self._driver.find_element(By.XPATH, btn_str).click()
+        ele = WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+        ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "close")))
+        ele.click()
         # 跳转到下载页面
         ele = WebDriverWait(self._driver, 1).until(EC.element_to_be_clickable((By.XPATH, "//div[text()=' 订单报表']/..")))
         if "active" not in ele.get_attribute("class"):
@@ -1099,22 +1098,22 @@ def crawler_main(chrome_path, download_path, user_path):
     try:
         print("启动浏览器，开始爬虫抓取")
         with init_chrome(chrome_path, download_path, user_path) as driver:
-            # meituan = MeiTuanCrawler(driver, download_path)
-            # print("登录并打开美团网站")
-            # meituan.login()
-            # print("下载综合营业统计表")
-            # meituan.download_synthesize_operate()
-            # print("下载自营外卖/自提订单明细表")
-            # meituan.download_autotrophy()
-            # print("下载综合收款统计表的数据")
-            # meituan.download_synthesize_income()
-            # print("下载支付结算表的相关数据")
-            # meituan.download_pay_settlement()
-            # print("下载储值消费汇总表的数据")
-            # meituan.download_store_consume()
-            # print("下载会员新增情况统计表的相关数据")
-            # meituan.download_member_addition()
-            # print("从美团网站爬虫导出EXCEL文件已完成")
+            meituan = MeiTuanCrawler(driver, download_path)
+            print("登录并打开美团网站")
+            meituan.login()
+            print("下载综合营业统计表")
+            meituan.download_synthesize_operate()
+            print("下载自营外卖/自提订单明细表")
+            meituan.download_autotrophy()
+            print("下载综合收款统计表的数据")
+            meituan.download_synthesize_income()
+            print("下载支付结算表的相关数据")
+            meituan.download_pay_settlement()
+            print("下载储值消费汇总表的数据")
+            meituan.download_store_consume()
+            print("下载会员新增情况统计表的相关数据")
+            meituan.download_member_addition()
+            print("从美团网站爬虫导出EXCEL文件已完成")
             dada = DadaCrawler(driver, download_path)
             print("登入并打开达达网站")
             dada.login()
@@ -1122,7 +1121,7 @@ def crawler_main(chrome_path, download_path, user_path):
             dada.download_store_report()
             print("从达达网站爬虫导出EXCEL文件已完成")
             print("等待网站上的EXCEL文件导出完毕,并移动EXCEL到相应位置")
-            # meituan.wait_download_finnish()
+            meituan.wait_download_finnish()
             dada.wait_download_finnish()
     except Exception:
         print(traceback.format_exc())
