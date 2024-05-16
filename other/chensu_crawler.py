@@ -117,6 +117,7 @@ class DataToExcel:
 def read_breakpoint(path) -> Tuple[set, pd.DataFrame]:
     """读取断点数据"""
     if not os.path.exists(path):
+        print("无断点数据,从头到尾抓取")
         return None, None
     datas = pd.read_excel(path)
     client_names = set(datas["一级商业*"].tolist())
@@ -160,9 +161,8 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
 
     def crawler_general(datas: List[dict], url2method):
         """抓取的通用方法"""
-        error_client = None
-        try:
-            for data in datas:
+        for data in datas:
+            try:
                 client_name = data.pop("client_name")
                 website_url = data.pop("website_url")
                 method_list = url2method[website_url]
@@ -170,13 +170,13 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
                 for value in method_list[1]():
                     product_name, amount = [value[i] for i in method_list[2]]
                     crawler_data[client_name][product_name].add(amount)
-        except Exception:
-            error_client = data["client_name"]
-            print("-" * 150)
-            print(f"脚本运行出现异常, 出错的截至问题公司:{error_client}")
-            print(traceback.format_exc())
-            print("-" * 150)
-        return error_client
+            except Exception:
+                print("-" * 150)
+                print(f"脚本运行出现异常, 出错的截至问题公司:{error_client}")
+                print(traceback.format_exc())
+                print("-" * 150)
+                return data["client_name"]
+
     crawler_data = collections.defaultdict(lambda: collections.defaultdict(set))
     print("抓取无验证码的网站数据")
     driver = init_chrome(exe_path, False)
@@ -226,9 +226,10 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
 
 
 if __name__ == "__main__":
-    set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
     set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
-    set_save_path = r"E:\NewFolder\chensu\\"
-    set_save_path += f"库存导入{datetime.date.today().strftime('%Y%m%d')}.xls"
+
+    set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
     set_database_path = r"E:\NewFolder\chensu\脚本产品库.xlsx"
+    now_day = datetime.date.today().strftime('%Y%m%d')
+    set_save_path = f"E:\\NewFolder\\chensu\\库存导入{now_day}.xls"
     main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path)
