@@ -59,7 +59,7 @@ class DataToExcel:
         length = (utf8_length - length) / 2 + length
         return int(length) + 2
 
-    def write_to_excel(self, error_client, breakpoint_data: pd.DataFrame):
+    def write_to_excel(self, breakpoint_data: pd.DataFrame):
         """将数据写入EXCEL表格"""
         # 写入断点之前的数据
         if breakpoint_data is not None:
@@ -67,9 +67,6 @@ class DataToExcel:
                 self.write_row(row[1], row[2], row[3], row[7], row[8])
         # 写入抓取的数据
         for client_name, name2standard in self.database.items():
-            # 报错的那个客户，所有账号数据都不记录
-            if error_client is not None and client_name == error_client:
-                continue
             # 没有抓取这个网站的数据，则跳过
             if client_name not in self.data:
                 continue
@@ -162,9 +159,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     def crawler_general(datas: List[dict], url2method):
         """抓取的通用方法"""
         for data in datas:
+            client_name = data.pop("client_name")
+            website_url = data.pop("website_url")
             try:
-                client_name = data.pop("client_name")
-                website_url = data.pop("website_url")
                 method_list = url2method[website_url]
                 method_list[0](**data)
                 for value in method_list[1]():
@@ -172,10 +169,13 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
                     crawler_data[client_name][product_name].add(amount)
             except Exception:
                 print("-" * 150)
-                print(f"脚本运行出现异常, 出错的截至问题公司:{error_client}")
+                print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
                 print(traceback.format_exc())
                 print("-" * 150)
-                return data["client_name"]
+                print("去除该客户的全部数据")
+                crawler_data.pop(client_name)
+                return True
+        return False
 
     crawler_data = collections.defaultdict(lambda: collections.defaultdict(set))
     print("抓取无验证码的网站数据")
@@ -188,9 +188,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
         inca.url: [inca.login, inca.get_inventory, [0, 1]],
         luyan.url: [luyan.login, luyan.get_inventory, [0, 1]],
     }
-    error_client = crawler_general(websites_no_code, url_condition)
-    if error_client is not None:
-        return error_client, crawler_data
+    is_error = crawler_general(websites_no_code, url_condition)
+    if is_error:
+        return crawler_data
     print("关闭浏览器")
     driver.quit()
     print("抓取有验证码的网站数据")
@@ -202,12 +202,12 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
         tc.url: [tc.login, tc.get_inventory, [0, 1]],
         druggc.url: [druggc.login, druggc.get_inventory, [0, 1]]
     }
-    error_client = crawler_general(websites_by_code, url_condition)
+    crawler_general(websites_by_code, url_condition)
     print("关闭浏览器")
     driver.quit()
     print("关闭HTTP服务")
     http_server.close_server()
-    return error_client, crawler_data
+    return crawler_data
 
 
 def main(websites_path, chrome_exe_path, save_path, database_path):
@@ -215,11 +215,11 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
     breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
     print("读取网站数据，并进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
-    error_client, crawler_data = crawler_websites_data(websites_by_code, websites_no_code, chrome_exe_path)
+    crawler_data = crawler_websites_data(websites_by_code, websites_no_code, chrome_exe_path)
     print("开始写入所有数据")
     writer = DataToExcel(save_path, database_path)
     writer.data.update(crawler_data)
-    writer.write_to_excel(error_client, breakpoint_datas)
+    writer.write_to_excel(breakpoint_datas)
     print("已完成所有数据写入,开始优化格式")
     writer.cell_format()
     print("程序运行已完成")
