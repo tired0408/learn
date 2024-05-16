@@ -10,38 +10,34 @@ import pandas as pd
 import numpy as np
 from re import Match
 from tqdm import tqdm
+from typing import Dict, List
 from datetime import datetime, timedelta
 from openpyxl.cell.cell import Cell
 from openpyxl.styles import PatternFill
-from selenium.webdriver.support.ui import WebDriverWait
-from .medicine_utils import start_http, init_chrome, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, correct_str
+from openpyxl.utils.cell import column_index_from_string
+from medicine_utils import start_http, init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb
 
 
-class Data:
+class ClientData:
+    """每个客户的数据类"""
 
     def __init__(self) -> None:
-        self.purchase = collections.defaultdict(set)  # 本周进货
-        self.inventory = collections.defaultdict(set)  # 本周库存
-        self.code = collections.defaultdict(set)  # 批号
-        self.sales = collections.defaultdict(set)  # 本周销量
+        self.purchase = collections.defaultdict(list)  # 本周进货
+        self.inventory = collections.defaultdict(list)  # 本周库存
+        self.code = collections.defaultdict(list)  # 批号
+        self.sales = collections.defaultdict(list)  # 本周销量
 
 
 class DataToExcel:
     """读取xlsx文件,并修改里面的数值"""
 
-    def __init__(self, path, standard_path, interval=1) -> None:
+    def __init__(self, path, interval=1) -> None:
         self.path = path
         self.wb = openpyxl.load_workbook(self.path)
         self.ws = self.create_ws(interval)
-        self.data = collections.defaultdict(Data)
-        self.name2standard = self.init_standard_data(standard_path)
 
-    def init_standard_data(self, path):
-        return {
-            "国药控股福建有限公司": {},
-            "鹭燕医药股份有限公司": {},
-            "泉州鹭燕医药有限公司": {},
-        }
+    def __del__(self):
+        self.wb.close()
 
     def save(self):
         """保存文件"""
@@ -49,10 +45,13 @@ class DataToExcel:
 
     def create_ws(self, interval):
         """创建工作表"""
+        last_ws = self.wb.worksheets[0]
+        now_date = datetime.now().strftime("%Y/%m/%d")
+        if last_ws.cell(3, 1).value.strftime("%Y/%m/%d") == now_date:
+            return last_ws
         print("复制工作表")
-        last_week = self.wb.worksheets[0]
-        ws = self.wb.copy_worksheet(last_week)
-        week_pattern: Match = re.search(r"^(\d+)月(\d+)周$", last_week.title)
+        ws = self.wb.copy_worksheet(last_ws)
+        week_pattern: Match = re.search(r"^(\d+)月(\d+)周$", last_ws.title)
         month, week = week_pattern.groups()
         week = int(week) + interval
         ws.title = f"{int(month) + 1}月1周" if week > 4 else f"{month}月{week}周"
@@ -65,27 +64,34 @@ class DataToExcel:
         self.save()
         return ws
 
-    def write_to_excel(self):
+    def write_to_excel(self, all_data: Dict[str, ClientData]):
         """将数据写入excel表格"""
-        now_date = datetime.now().strftime("%Y/%m/%d")
-        for row_index in tqdm(range(3, self.ws.max_row)):
-            name = self.ws[f"G{row_index}"].value
-            person = self.ws[f"E{row_index}"].value
-            company = self.ws[f"F{row_index}"].value
-            data = self.data[company]
-            self.ws[f"A{row_index}"] = now_date  # 日期
-            if person == "傅镔滢":
-                self.ws[f"L{row_index}"] = self.ws[f"Q{row_index}"].value  # 上周库存
-                self.ws[f"M{row_index}"] = int(np.sum(list(data.purchase[name])))  # 本周进货
-                self.ws[f"Q{row_index}"] = int(np.sum(list(data.inventory[name])))  # 本周库存
-                self.ws[f"R{row_index}"] = "、".join(list(data.code[name])) if name in data.code else ""  # 批号
-                self.ws[f"S{row_index}"] = self.judge_worn(row_index, int(np.sum(list(data.sales[name]))))  # 备注（记录破损情况）
+        now_date = datetime.now()
+        for row_i in tqdm(range(3, self.ws.max_row + 1)):
+            name = self.ws.cell(row_i, column_index_from_string("G")).value
+            person = self.ws.cell(row_i, column_index_from_string("E")).value
+            company = self.ws.cell(row_i, column_index_from_string("F")).value
+            # 写入数据
+            statistics_date = self.ws.cell(row_i, column_index_from_string("A"))
+            if statistics_date != now_date:
+                statistics_date.value = now_date  # 统计日期
+                last_inventory = self.ws.cell(row_i, column_index_from_string("Q")).value
+                self.ws.cell(row_i, column_index_from_string("L"), last_inventory)  # 上周库存
+            if person == "傅镔滢" and company in all_data:
+                data = all_data[company]
+                this_purchase = int(np.sum(list(data.purchase[name])))
+                self.ws.cell(row_i, column_index_from_string("M"), this_purchase)
+                this_inventory = int(np.sum(list(data.inventory[name])))
+                self.ws.cell(row_i, column_index_from_string("Q"), this_inventory)
+                this_code = "、".join(list(data.code[name])) if name in data.code else ""
+                self.ws.cell(row_i, column_index_from_string("R"), this_code)
+                this_worn = self.judge_worn(row_i, int(np.sum(list(data.sales[name]))))
+                self.ws.cell(row_i, column_index_from_string("S"), this_worn)
             else:
-                self.ws[f"L{row_index}"] = ""
-                self.ws[f"M{row_index}"] = ""
-                self.ws[f"Q{row_index}"] = ""
-                self.ws[f"R{row_index}"] = ""
-                self.ws[f"S{row_index}"] = ""
+                self.ws.cell(row_i, column_index_from_string("M"), "")  # 本周进货
+                self.ws.cell(row_i, column_index_from_string("Q"), "")  # 本周库存
+                self.ws.cell(row_i, column_index_from_string("R"), "")  # 批号
+                self.ws.cell(row_i, column_index_from_string("S"), "")  # 备注（记录破损情况）
         self.save()
 
     def judge_worn(self, row_index, actual_sale):
@@ -98,98 +104,180 @@ class DataToExcel:
             return ""
 
 
-def main(websites_path, chrome_exe_path, save_path, database_path, week_interval):
-    http_server, q = start_http()
-    driver = init_chrome(chrome_exe_path)
-    wait = WebDriverWait(driver, 5)
-    writer = DataToExcel(save_path, database_path, interval=week_interval)
-    spfj = SPFJWeb(driver, wait)
-    druggc = DruggcWeb(driver, wait, q)
-    luyan = LYWeb(driver, wait)
-    inca = INCAWeb(driver, wait)
+class SPFJWebSelf(SPFJWeb):
 
-    # 计算开始时间
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+        """获取所需数据"""
+        self.login(user, password, district_name)
+        for product_name, purchase, sale, inventory in self.purchase_sale_stock(start_date_str):
+            standard = name2standard[product_name]
+            save_data.purchase[standard].append(purchase)
+            save_data.sales[standard].append(sale)
+            save_data.inventory[standard].append(inventory)
+        for product_name, _, code in self.get_inventory(start_date_str):
+            standard = name2standard[product_name]
+            save_data.code[standard].append(code)
+
+
+class LYWebSelf(LYWeb):
+
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+        self.login(user, password, district_name)
+        for product_name, _, code in self.get_inventory():
+            standard = name2standard[product_name]
+            save_data.code[standard].append(code)
+        for product_name, purchase, sale, inventory in self.purchase_sale_stock(start_date_str):
+            standard = name2standard[product_name]
+            save_data.purchase[standard].append(purchase)
+            save_data.sales[standard].append(sale)
+            save_data.inventory[standard].append(inventory)
+
+
+class DruggcWebSelf(DruggcWeb):
+
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+        self.login(user, password, district_name)
+        for product_name, inventory, code in self.get_inventory():
+            standard = name2standard[product_name]
+            save_data.inventory[standard].append(inventory)
+            save_data.code[standard].append(code)
+        for product_name, amount in self.get_purchase(start_date_str):
+            standard = name2standard[product_name]
+            save_data.purchase[standard].append(amount)
+        for product_name, amount in self.get_sales(start_date_str):
+            standard = name2standard[product_name]
+            save_data.sales[standard].append(amount)
+
+
+class INCAWebSelf(INCAWeb):
+
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+        self.login(user, password, district_name)
+        for product_name, inventory, code in self.get_inventory():
+            standard = name2standard[product_name]
+            save_data.inventory[standard].append(inventory)
+            save_data.code[standard].append(code)
+        for product_name, amount in self.get_purchase(start_date_str):
+            standard = name2standard[product_name]
+            save_data.purchase[standard].append(amount)
+        for product_name, amount in self.get_sales(start_date_str):
+            standard = name2standard[product_name]
+            save_data.sales[standard].append(amount)
+
+
+def gain_breakpoint(path):
+    """读取断点数据，获取已经爬取的客户名称"""
+    df = pd.read_excel(path, header=None)
+    if df.iloc[3, 0].strftime("%Y/%m/%d") != datetime.now().strftime("%Y/%m/%d"):
+        print("无断点数据，从头开始抓取")
+        return
+    df = df.iloc[2:]
+    df = df[df[4] == "傅镔滢"]
+    df = df.iloc[:, [5, 12, 16, 17, 18]]
+    df = df.fillna("")
+    df[12] = df[12].astype(str)
+    df[16] = df[16].astype(str)
+    df[17] = df[17].astype(str)
+    df[18] = df[18].astype(str)
+    df = df.groupby(5).agg({12: 'sum', 16: 'sum', 17: 'sum', 18: 'sum'})
+    df = df.where(df != "", np.nan)
+    df = df.dropna(subset=[12, 16, 17, 18], how="all")
+    rd = df.index.to_list()
+    print(f"检测到断点,进行断点续查。已抓取数据:{rd}")
+    return rd
+
+
+def gain_database(path):
+    """获取数据库"""
+    rd = collections.defaultdict(dict)
+    database = pd.read_excel(path)
+    for _, row in database.iterrows():
+        v0, v1, v2, _, _ = row
+        if v1 == "":
+            continue
+        rd[v0][v1] = v2
+    return rd
+
+
+def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code,
+                     week_interval) -> Dict[str, ClientData]:
+    """从网站上爬取数据"""
+    def crawler_general(datas: List[dict], url2method):
+        for data in datas:
+            client_name = data.pop("client_name")
+            website_url = data.pop("website_url")
+            try:
+                data["start_date_str"] = start_date_str
+                data["save_data"] = rd[client_name]
+                data["name2standard"] = all_name2standard[client_name]
+                url2method[website_url](**data)
+            except Exception:
+                print("-" * 150)
+                print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
+                print(traceback.format_exc())
+                print("-" * 150)
+                print("去除该客户的全部数据")
+                rd.pop(client_name)
+                return True
+        return False
+
+    rd = collections.defaultdict(ClientData)
+    print("获取数据库")
+    all_name2standard = gain_database(database_path)
+    print("计算开始时间")
     start_date = datetime.now()
-    start_date = datetime.strptime("2024-04-14", "%Y-%m-%d")
     start_date = start_date - timedelta(days=start_date.weekday() + 7 * (week_interval - 1))
     start_date_str = start_date.strftime("%Y-%m-%d")
-    websites = pd.read_excel(websites_path)
-    for _, row in websites.iterrows():
-        # 获取登录信息
-        client = correct_str(row.iloc[3])
-        district_name = correct_str(row.iloc[4])
-        website_url = correct_str(row.iloc[7])
-        user = correct_str(row.iloc[8])
-        password = row.iloc[9]
-        password = "" if pd.isna(password) else correct_str(password)
-        # 获取相关数据
-        client_data = writer.data[client]
-        name2standard = writer.name2standard[client]
-        if website_url == spfj.url:
-            spfj.login(user, password, district_name)
-            for product_name, purchase, sale, inventory in spfj.purchase_sale_stock(start_date_str):
-                standard = name2standard[product_name]
-                client_data.purchase[standard].add(purchase)
-                client_data.sales[standard].add(sale)
-                client_data.inventory[standard].add(inventory)
-            for product_name, _, code in spfj.get_inventory(start_date_str):
-                standard = name2standard[product_name]
-                client_data.code[standard].add(code)
-        elif website_url == luyan.url:
-            luyan.login(user, password, district_name)
-            for product_name, _, code in luyan.get_inventory():
-                standard = name2standard[product_name]
-                client_data.code[standard].add(code)
-            for product_name, purchase, sale, inventory in luyan.purchase_sale_stock(start_date_str):
-                standard = name2standard[product_name]
-                client_data.purchase[standard].add(purchase)
-                client_data.sales[standard].add(sale)
-                client_data.inventory[standard].add(inventory)
-        elif website_url == inca.url:
-            inca.login(user, password)
-            for product_name, inventory, code in inca.get_inventory():
-                standard = name2standard[product_name]
-                client_data.inventory[standard].add(inventory)
-                client_data.code[standard].add(code)
-            for product_name, amount in inca.get_purchase(start_date_str):
-                standard = name2standard[product_name]
-                client_data.purchase[standard].add(amount)
-            for product_name, amount in inca.get_sales(start_date_str):
-                standard = name2standard[product_name]
-                client_data.sales[standard].add(amount)
-        elif website_url == druggc.url:
-            druggc.login(user, password, district_name)
-            for product_name, inventory, code in druggc.get_inventory():
-                standard = name2standard[product_name]
-                client_data.inventory[standard].add(inventory)
-                client_data.code[standard].add(code)
-            for product_name, amount in druggc.get_purchase(start_date_str):
-                standard = name2standard[product_name]
-                client_data.purchase[standard].add(amount)
-            for product_name, amount in druggc.get_sales(start_date_str):
-                standard = name2standard[product_name]
-                client_data.sales[standard].add(amount)
-        else:
-            raise Exception("未知网站")
-    print("将数据写入到excel表格中")
-    writer.write_to_excel()
+    print("抓取无验证码的网站数据")
+    driver = init_chrome(exe_path, False)
+    spfj = SPFJWebSelf(driver)
+    inca = INCAWebSelf(driver)
+    luyan = LYWebSelf(driver)
+    url_condition = {
+        spfj.url: spfj.get_datas,
+        inca.url: inca.get_datas,
+        luyan.url: luyan.get_datas
+    }
+    is_error = crawler_general(websites_no_code, url_condition)
+    if is_error:
+        return rd
     print("关闭浏览器")
     driver.quit()
-    print("关闭HTTP服务器")
+    print("抓取有验证码的网站数据")
+    http_server, q = start_http()
+    driver = init_chrome(exe_path)
+    druggc = DruggcWebSelf(driver, q)
+    url_condition = {
+        druggc.url: druggc.get_datas
+    }
+    print("开始抓取")
+    crawler_general(websites_by_code, url_condition)
+    print("关闭浏览器")
+    driver.quit()
+    print("关闭HTTP服务")
     http_server.close_server()
+    return rd
+
+
+def main(chrome_exe_path, websites_path, save_path, database_path, week_interval):
+    print("读取断点数据")
+    breakpoint_names = gain_breakpoint(save_path)
+    print("针对网站数据进行分类")
+    websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
+    print("从网站上爬取数据")
+    crawler_data = crawler_from_web(chrome_exe_path, database_path, websites_by_code, websites_no_code, week_interval)
+    print("定义数据写入类")
+    writer = DataToExcel(save_path, interval=week_interval)
+    print("将数据写入到excel表格中")
+    writer.write_to_excel(crawler_data)
+    print("程序运行已完成")
 
 
 if __name__ == "__main__":
-    try:
-        set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
-        set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
-        set_save_path = r"E:\NewFolder\dabin\data.xlsx"
-        set_database_path = r"E:\NewFolder\dabin\standard.xlsx"
-        set_week_interval = 1  # 间隔的查询周数
-        main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path, set_week_interval)
-        print("脚本已运行完成.")
-    except Exception:
-        print("-" * 150)
-        print("脚本运行出现异常:")
-        print(traceback.format_exc())
-        print("-" * 150)
+    set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+
+    set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
+    set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
+    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年4月第3周周进销存报表（福建）-主席_new.xlsx"
+    set_week_interval = 1  # 间隔的查询周数
+    main(set_chrome_exe_path, set_websites_path, set_save_path, set_database_path, set_week_interval)

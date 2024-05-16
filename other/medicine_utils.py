@@ -3,6 +3,7 @@
 """
 import re
 import time
+import pandas as pd
 from typing import Tuple, List
 from queue import Queue
 from datetime import datetime
@@ -61,15 +62,51 @@ def start_http() -> Tuple[HttpServer, Queue]:
     return ocr_http, q
 
 
+def analyze_website(path, ignore_names):
+    """分析网站数据"""
+    websites = pd.read_excel(path)
+    websites_by_code, websites_no_code = [], []
+    # 网站的验证码情况
+    code_condition = {
+        SPFJWeb.url: False,
+        INCAWeb.url: False,
+        LYWeb.url: False,
+        TCWeb.url: True,
+        DruggcWeb.url: True
+    }
+    for _, row in websites.iterrows():
+        data = {
+            "website_url": correct_str(row.iloc[2]),
+            "client_name": correct_str(row.iloc[0]),
+            "user": correct_str(row.iloc[3]),
+            "password": "" if pd.isna(row.iloc[4]) else correct_str(row.iloc[4]),
+        }
+        if not pd.isna(row.iloc[1]):
+            data["district_name"] = correct_str(row.iloc[1])
+        if ignore_names is not None and data["client_name"] in ignore_names:
+            print(f"断点之前已查询过:{data['client_name']},{data['user']}")
+            continue
+        if code_condition[data["website_url"]]:
+            websites_by_code.append(data)
+        else:
+            websites_no_code.append(data)
+    return websites_by_code, websites_no_code
+
+
 def get_url_success(driver: Chrome, url, element_type, element_value):
     """登录网站"""
-    while True:
+    for _ in range(5):
         driver.get(url)
         if driver.title == "502 Bad Gateway":
             time.sleep(1)
             continue
-        WebDriverWait(driver, 20).until(EC.visibility_of_element_located((element_type, element_value)))
+        try:
+            WebDriverWait(driver, 20).until(EC.visibility_of_element_located((element_type, element_value)))
+        except TimeoutException:
+            raise Exception(f"登录超时,请检查网站是否能访问:{url} ")
         break
+    else:
+        raise Exception(f"多次登入失败，请检查网站是否能访问:{url}")
 
 
 class SPFJWeb:

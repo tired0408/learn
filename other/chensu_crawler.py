@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List
 from xlwt.Worksheet import Worksheet
-from medicine_utils import start_http, init_chrome, correct_str, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import start_http, init_chrome, analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
 
 
 class DataToExcel:
@@ -123,37 +123,6 @@ def read_breakpoint(path) -> Tuple[set, pd.DataFrame]:
     return client_names, datas
 
 
-def analyze_website(path, ignore_names):
-    """分析网站数据"""
-    websites = pd.read_excel(path)
-    websites_by_code, websites_no_code = [], []
-    # 网站的验证码情况
-    code_condition = {
-        SPFJWeb.url: False,
-        INCAWeb.url: False,
-        LYWeb.url: False,
-        TCWeb.url: True,
-        DruggcWeb.url: True
-    }
-    for _, row in websites.iterrows():
-        data = {
-            "website_url": correct_str(row.iloc[2]),
-            "client_name": correct_str(row.iloc[0]),
-            "user": correct_str(row.iloc[3]),
-            "password": "" if pd.isna(row.iloc[4]) else correct_str(row.iloc[4]),
-        }
-        if not pd.isna(row.iloc[1]):
-            data["district_name"] = correct_str(row.iloc[1])
-        if ignore_names is not None and data["client_name"] in ignore_names:
-            print(f"断点之前已查询过:{data['client_name']},{data['user']}")
-            continue
-        if code_condition[data["website_url"]]:
-            websites_by_code.append(data)
-        else:
-            websites_no_code.append(data)
-    return websites_by_code, websites_no_code
-
-
 def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[dict], exe_path):
 
     def crawler_general(datas: List[dict], url2method):
@@ -213,8 +182,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
 def main(websites_path, chrome_exe_path, save_path, database_path):
     print("读取断点数据")
     breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
-    print("读取网站数据，并进行分类")
+    print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
+    print("从网站上爬取所需数据")
     crawler_data = crawler_websites_data(websites_by_code, websites_no_code, chrome_exe_path)
     print("开始写入所有数据")
     writer = DataToExcel(save_path, database_path)
