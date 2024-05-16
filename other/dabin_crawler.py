@@ -73,7 +73,7 @@ class DataToExcel:
             company = self.ws.cell(row_i, column_index_from_string("F")).value
             # 写入数据
             statistics_date = self.ws.cell(row_i, column_index_from_string("A"))
-            if statistics_date != now_date:
+            if statistics_date.value.strftime("%Y/%m/%d") != now_date.strftime("%Y/%m/%d"):
                 statistics_date.value = now_date  # 统计日期
                 last_inventory = self.ws.cell(row_i, column_index_from_string("Q")).value
                 self.ws.cell(row_i, column_index_from_string("L"), last_inventory)  # 上周库存
@@ -151,8 +151,8 @@ class DruggcWebSelf(DruggcWeb):
 
 class INCAWebSelf(INCAWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
-        self.login(user, password, district_name)
+    def get_datas(self, user, password, start_date_str, save_data: ClientData, name2standard):
+        self.login(user, password)
         for product_name, inventory, code in self.get_inventory():
             standard = name2standard[product_name]
             save_data.inventory[standard].append(inventory)
@@ -228,34 +228,36 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
     start_date = datetime.now()
     start_date = start_date - timedelta(days=start_date.weekday() + 7 * (week_interval - 1))
     start_date_str = start_date.strftime("%Y-%m-%d")
-    print("抓取无验证码的网站数据")
-    driver = init_chrome(exe_path, False)
-    spfj = SPFJWebSelf(driver)
-    inca = INCAWebSelf(driver)
-    luyan = LYWebSelf(driver)
-    url_condition = {
-        spfj.url: spfj.get_datas,
-        inca.url: inca.get_datas,
-        luyan.url: luyan.get_datas
-    }
-    is_error = crawler_general(websites_no_code, url_condition)
-    if is_error:
-        return rd
-    print("关闭浏览器")
-    driver.quit()
-    print("抓取有验证码的网站数据")
-    http_server, q = start_http()
-    driver = init_chrome(exe_path)
-    druggc = DruggcWebSelf(driver, q)
-    url_condition = {
-        druggc.url: druggc.get_datas
-    }
-    print("开始抓取")
-    crawler_general(websites_by_code, url_condition)
-    print("关闭浏览器")
-    driver.quit()
-    print("关闭HTTP服务")
-    http_server.close_server()
+    if len(websites_no_code) != 0:
+        print("抓取无验证码的网站数据")
+        driver = init_chrome(exe_path, False)
+        spfj = SPFJWebSelf(driver)
+        inca = INCAWebSelf(driver)
+        luyan = LYWebSelf(driver)
+        url_condition = {
+            spfj.url: spfj.get_datas,
+            inca.url: inca.get_datas,
+            luyan.url: luyan.get_datas
+        }
+        is_error = crawler_general(websites_no_code, url_condition)
+        print("关闭浏览器")
+        driver.quit()
+        if is_error:
+            return rd
+    if len(websites_by_code) != 0:
+        print("抓取有验证码的网站数据")
+        http_server, q = start_http()
+        driver = init_chrome(exe_path)
+        druggc = DruggcWebSelf(driver, q)
+        url_condition = {
+            druggc.url: druggc.get_datas
+        }
+        print("开始抓取")
+        crawler_general(websites_by_code, url_condition)
+        print("关闭浏览器")
+        driver.quit()
+        print("关闭HTTP服务")
+        http_server.close_server()
     return rd
 
 
@@ -278,6 +280,6 @@ if __name__ == "__main__":
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
-    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年4月第3周周进销存报表（福建）-主席_new.xlsx"
+    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年4月第3周周进销存报表（福建）-主席.xlsx"
     set_week_interval = 1  # 间隔的查询周数
     main(set_chrome_exe_path, set_websites_path, set_save_path, set_database_path, set_week_interval)

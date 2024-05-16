@@ -132,6 +132,7 @@ class SPFJWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[1].text + elements[2].text
+            product_name = product_name.replace(" ", "")
             purchase = int(elements[4].text)
             sales = int(elements[5].text)
             inventory = int(elements[7].text)
@@ -147,6 +148,7 @@ class SPFJWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[1].text + elements[3].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[4].text)
             code = str(elements[6].text)
             return [product_name, amount, code]
@@ -201,10 +203,11 @@ class INCAWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[1].text + elements[2].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[5].text)
             if "胰岛素" in product_name:
                 amount = amount * 2
-            code = str(elements[4].text)
+            code = str(elements[6].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_func, "供应商网络服务", "库存明细查询")
         print(f"[片仔癀漳州]库存数据抓取已完成，共抓取{len(rd)}条数据")
@@ -217,6 +220,7 @@ class INCAWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[2].text + elements[3].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
         rd = self.get_table_data(deal_func, "供应商网络服务", "进货明细查询", start_date, self.time_set)
@@ -226,6 +230,7 @@ class INCAWeb:
     def get_sales(self, start_date=None):
         def deal_func(elements: List[WebElement]):
             product_name = elements[2].text + elements[3].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
         rd = self.get_table_data(deal_func, "客户网络服务", "发货明细查询", start_date, self.time_set)
@@ -311,6 +316,7 @@ class LYWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[0].text + elements[1].text
+            product_name = product_name.replace(" ", "")
             amount = int(float(elements[3].text))
             code = str(elements[5].text)
             return [product_name, amount, code]
@@ -325,6 +331,7 @@ class LYWeb:
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[0].text + elements[1].text
+            product_name = product_name.replace(" ", "")
             purchase = int(float(elements[4].text))
             sales = int(float(elements[3].text))
             inventory = int(float(elements[5].text))
@@ -400,6 +407,7 @@ class TCWeb:
             for each_v in values[1:]:
                 each_v = each_v.find_elements(By.TAG_NAME, "td")
                 product_name = each_v[1].text + each_v[2].text
+                product_name = product_name.replace(" ", "")
                 inventory = int(each_v[6].text)
                 rd.append([product_name, inventory])
         except NoSuchElementException:
@@ -446,6 +454,7 @@ class DruggcWeb:
         """
         def deal_inventory(elements: List[WebElement]):
             product_name = elements[0].text + elements[2].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[-2].text)
             code = str(elements[4].text)
             return [product_name, amount, code]
@@ -460,6 +469,7 @@ class DruggcWeb:
         """
         def deal_restock(elements: List[WebElement]):
             product_name = elements[2].text + elements[4].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
         rd = self.get_table_data(deal_restock, "进货明细", start_date)
@@ -473,6 +483,7 @@ class DruggcWeb:
         """
         def deal_sales(elements: List[WebElement]):
             product_name = elements[2].text + elements[3].text
+            product_name = product_name.replace(" ", "")
             amount = int(elements[4].text)
             return [product_name, amount]
         rd = self.get_table_data(deal_sales, '供应商流向', start_date)
