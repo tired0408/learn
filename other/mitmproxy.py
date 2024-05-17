@@ -46,6 +46,10 @@ def response(flow: HTTPFlow):
         print(flow.request.url)
         img = base64.b64encode(flow.response.content)
         result = ocr_api.recongnize(img)
+        print(f"识别结果:{result}")
+        if len(result) != 4:
+            result += "00000"
+            print(f"识别结果加上00000:{result}")
         try:
             sock.sendall(result.encode())
         except socket.error as e:
