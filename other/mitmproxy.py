@@ -47,7 +47,7 @@ def response(flow: HTTPFlow):
         img = base64.b64encode(flow.response.content)
         result = ocr_api.recongnize(img)
         print(f"识别结果:{result}")
-        if len(result) != 4:
+        if len(result) < 4:
             result += "00000"
             print(f"识别结果加上00000:{result}")
         try:
