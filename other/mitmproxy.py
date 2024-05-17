@@ -2,7 +2,9 @@
 拦截浏览器响应数据的方法，并识别验证码图片，启动命令：
 mitmdump -s mitmproxy.py
 """
+
 import base64
+import socket
 import requests
 from mitmproxy.http import HTTPFlow
 
@@ -44,10 +46,14 @@ def response(flow: HTTPFlow):
         print(flow.request.url)
         img = base64.b64encode(flow.response.content)
         result = ocr_api.recongnize(img)
-        print(result)
-        rd = requests.get(r"http://localhost:8557/ocr", params={"value": result}, timeout=0.5)
-        print(rd)
+        try:
+            sock.sendall(result.encode())
+        except socket.error as e:
+            print(f"Socket is not connected: {e}")
+            sock.connect(('localhost', 12345))
+            sock.sendall(result.encode())
         print("-" * 200)
 
 
 ocr_api = BaiduOCRApi()
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

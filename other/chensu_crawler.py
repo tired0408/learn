@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List
 from xlwt.Worksheet import Worksheet
-from medicine_utils import start_http, init_chrome, analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import init_chrome, analyze_website, start_socket, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
 
 
 class DataToExcel:
@@ -163,7 +163,7 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     print("关闭浏览器")
     driver.quit()
     print("抓取有验证码的网站数据")
-    http_server, q = start_http()
+    q = start_socket()
     driver = init_chrome(exe_path)
     tc = TCWeb(driver, q)
     druggc = DruggcWeb(driver, q)
@@ -174,8 +174,6 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     crawler_general(websites_by_code, url_condition)
     print("关闭浏览器")
     driver.quit()
-    print("关闭HTTP服务")
-    http_server.close_server()
     return crawler_data
 
 
@@ -196,10 +194,11 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
 
 
 if __name__ == "__main__":
-    set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    user_folder = r"E:\NewFolder\chensu"
 
-    set_websites_path = r"E:\NewFolder\chensu\库存网查明细.xlsx"
-    set_database_path = r"E:\NewFolder\chensu\脚本产品库.xlsx"
+    set_chrome_exe_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
+    set_websites_path = os.path.join(user_folder, "库存网查明细.xlsx")
+    set_database_path = os.path.join(user_folder, "脚本产品库.xlsx")
     now_day = datetime.date.today().strftime('%Y%m%d')
-    set_save_path = f"E:\\NewFolder\\chensu\\库存导入{now_day}.xls"
+    set_save_path = os.path.join(user_folder, f"库存导入{now_day}.xls")
     main(set_websites_path, set_chrome_exe_path, set_save_path, set_database_path)

@@ -3,8 +3,10 @@
 """
 import re
 import time
+import socket
+import threading
 import pandas as pd
-from typing import Tuple, List
+from typing import List
 from queue import Queue
 from datetime import datetime
 from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException
@@ -15,7 +17,6 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
-from onceorauto.misc.http_server import HttpServer
 
 
 def init_chrome(exe_path, is_proxy=True):
@@ -42,24 +43,26 @@ def clear_and_send(element: WebElement, value):
     element.send_keys(value)
 
 
-def start_http() -> Tuple[HttpServer, Queue]:
-    """
-    异步启动HTTP服务,用于获取OCR识别结果,返回数据获取通道
-    """
-    def deal_method(**kwargs):
-        print(f"接收到识别结果：{kwargs}")
-        if not q.empty():
-            value = q.get()
-            print(f"丢弃多余识别:{value}")
-        ocr_result = kwargs["value"][0] if "value" in kwargs else ""
-        q.put(ocr_result)
-        return {"res": True}
-
+def start_socket():
+    def sock_method():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(('localhost', 12345))
+            s.listen()
+            print("服务器启动，等待连接...")
+            conn, addr = s.accept()
+            with conn:
+                print(f"连接自: {addr}")
+                while True:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    data = data.decode()
+                    q.put(data)
+                    print(f"接收到数据: {data}")
+            print(f"关闭连接:{addr}")
     q = Queue(maxsize=1)
-    func_map = [["/ocr", "GET", deal_method]]
-    ocr_http = HttpServer(8557, func_map, logger=True)
-    ocr_http.run_server(is_asyn=True)
-    return ocr_http, q
+    threading.Thread(target=sock_method).start()
+    return q
 
 
 def analyze_website(path, ignore_names):
@@ -380,7 +383,7 @@ class TCWeb:
                 WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "imgLogin")))
                 clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
                 clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
-                captcha_value = self.captcha.get(timeout=5)
+                captcha_value = self.captcha.get(timeout=60)
                 print(f"输入验证码:{captcha_value}")
                 clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha_value)
                 self.driver.find_element(By.ID, "imgLogin").click()
@@ -430,7 +433,7 @@ class DruggcWeb:
         clear_and_send(self.driver.find_element(By.ID, "password"), password)
         Select(self.driver.find_element(By.ID, "entryid")).select_by_visible_text(district_name)
         while True:
-            captcha = self.captcha.get(timeout=5)
+            captcha = self.captcha.get(timeout=60)
             print(f"输入验证码:{captcha}")
             if len(captcha) == 4:
                 clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)

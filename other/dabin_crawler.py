@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from openpyxl.cell.cell import Cell
 from openpyxl.styles import PatternFill
 from openpyxl.utils.cell import column_index_from_string
-from medicine_utils import start_http, init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import start_socket, init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb
 
 
 class ClientData:
@@ -246,7 +246,7 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
             return rd
     if len(websites_by_code) != 0:
         print("抓取有验证码的网站数据")
-        http_server, q = start_http()
+        q = start_socket()
         driver = init_chrome(exe_path)
         druggc = DruggcWebSelf(driver, q)
         url_condition = {
@@ -256,8 +256,6 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
         crawler_general(websites_by_code, url_condition)
         print("关闭浏览器")
         driver.quit()
-        print("关闭HTTP服务")
-        http_server.close_server()
     return rd
 
 
