@@ -383,8 +383,13 @@ class DadaCrawler(WebCrawler):
         # 申请报表下载
         btn_str = "//div[text()='Still bread 还是面包厨房（华瑞花园1期店）']/../..//span[text()='下载门店订单明细']"
         self._driver.find_element(By.XPATH, btn_str).click()
-        ele = WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
-        ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "close")))
+        condition = EC.visibility_of_element_located((By.CLASS_NAME, "modal-content"))
+        modal = WebDriverWait(self._driver, 10).until(condition)
+        condition = EC.element_to_be_clickable((By.CLASS_NAME, "modal-header"))
+        header = WebDriverWait(modal, 10).until(condition)
+        header.click()
+        condition = EC.element_to_be_clickable((By.XPATH, ".//button[contains(@class, 'close')]/span"))
+        ele = WebDriverWait(modal, 10).until(condition)
         ele.click()
         # 跳转到下载页面
         ele = WebDriverWait(self._driver, 1).until(EC.element_to_be_clickable((By.XPATH, "//div[text()=' 订单报表']/..")))
@@ -527,7 +532,7 @@ class MeiTuanCrawler(WebCrawler):
         self.__date_select_2(submodule)
         self.__search(submodule)
         self.__clear_excel(name)
-        self.__wait_search_finnsh_2(submodule)
+        self.__wait_search_finnsh_2()
         self.__download_direct(submodule, name)
 
     def download_member_addition(self):
@@ -570,6 +575,7 @@ class MeiTuanCrawler(WebCrawler):
 
     def __enter_rc_module(self, module, menu_name, name):
         """进入报表中心的子模块"""
+        print(f"进入报表中心-{menu_name}-{name}")
         submodule = self.__get_statement_submodule(module)
         if self.__get_active_submodule_name(module) != name:
             self.__hover_and_click(module, menu_name, name)
@@ -586,6 +592,7 @@ class MeiTuanCrawler(WebCrawler):
 
     def __enter_mc_module(self, module: WebElement, menu_name, name):
         """进入营销中心的子模块"""
+        print(f"进入营销中心-{menu_name}-{name}")
         if self.__get_active_submodule_name(module) != name:
             self.__hover_and_click(module, menu_name, name)
         name2url = {
@@ -596,6 +603,7 @@ class MeiTuanCrawler(WebCrawler):
         WebDriverWait(module, 60).until(EC.visibility_of_element_located(pattern))
         iframe = module.find_element(*pattern)
         self._driver.switch_to.frame(iframe)
+        return self._driver
 
     def __get_active_submodule_name(self, module: WebElement):
         """获取激活的子模块名字"""
@@ -631,7 +639,8 @@ class MeiTuanCrawler(WebCrawler):
 
     def __date_select_2(self, submodule: WebElement):
         """日期选择2:储值消费汇总表的那个类型日期选择控件"""
-        submodule.find_element(By.CLASS_NAME, "el-range-input").click()
+        ele = WebDriverWait(submodule, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "el-range-input")))
+        ele.click()
         pattern = (By.XPATH, ".//div[@class='el-picker-panel el-date-range-picker el-popper']")
         WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located(pattern))
         left, right = self._driver.find_element(*pattern).find_elements(By.XPATH, "./*/*/*")
@@ -690,7 +699,8 @@ class MeiTuanCrawler(WebCrawler):
         return calendar_month_ele.text, calendar_month_ele
 
     def __search(self, submodule: WebElement):
-        submodule.find_element(By.XPATH, "//button[contains(., '查询')]").click()
+        ele = WebDriverWait(submodule, 10).until(EC.element_to_be_clickable((By.XPATH, ".//button[contains(., '查询')]")))
+        ele.click()
 
     def __wait_search_finnsh_1(self, submodule: WebElement):
         """等待查询内容显示1:类似综合收款统计的表格类型"""
@@ -923,29 +933,50 @@ class DaDaAutotrophy:
     def save(self):
         self.wb.save(GOL.save_path.autotrophy_dada)
 
-    def autotrophy_order(self):
-        """自营订单外卖的数据处理"""
+    def extract_data(self):
+        """从原表中提取所需数据"""
         # 获取需要保存的数据
         ws = self.wb["1"]
         header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
         order_source_i = header.index("订单来源编号")
         order_status_i = header.index("订单状态")
-        save_data = [header]
+        autotrophy = [header]
+        anomaly = [header]
         for row in ws.iter_rows(min_row=2, values_only=True):
             order_source = row[order_source_i]
             order_status = row[order_status_i]
             if "自营外卖" not in order_source:
                 continue
-            elif order_status != "已完成":
-                continue
-            save_data.append(list(row))
+            if order_status == '已完成':
+                autotrophy.append(list(row))
+            elif order_status in ["已取消", "妥投异常,返还完成"]:
+                anomaly.append(list(row))
+        return autotrophy, anomaly
+
+    def proper_anomaly(self, datas):
+        """新建妥投异常分表"""
+        ws = self.wb.create_sheet("妥投异常及取消订单运费")
+        for i, row in enumerate(datas, start=1):
+            for j, value in enumerate(row, start=1):
+                ws.cell(i, j, value)
+        # 添加合计行
+        sum_row_i = ws.max_row + 1
+        ws.cell(sum_row_i, 1, "合计")
+        for i in range(15, 41):
+            range_start = f"{get_column_letter(i)}2"
+            range_end = f"{get_column_letter(i)}{sum_row_i - 1}"
+            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")
+
+    def autotrophy_order(self, datas: List[list]):
+        """新建自营订单外卖分表"""
+        header = datas[0]
         # 将配送距离的值从文本改为数值
         distance_i = header.index("配送距离")
-        for i in range(1, len(save_data)):
-            save_data[i][distance_i] = float(save_data[i][distance_i])
+        for i in range(1, len(datas)):
+            datas[i][distance_i] = float(datas[i][distance_i])
         # 保存数据
         ws = self.wb.create_sheet("自营外卖订单（不含自配送）")
-        for i, row in enumerate(save_data, start=1):
+        for i, row in enumerate(datas, start=1):
             for j, value in enumerate(row, start=1):
                 ws.cell(i, j, value)
         # 插入数据
@@ -1083,6 +1114,13 @@ class TalkOutData:
                 client_freight = ws[f"{get_column_letter(header.index('配送区间应收客户运费') + 1)}{max_row}"].value
                 business_freight = ws[f"{get_column_letter(header.index('商户支付配送费') + 1)}{max_row}"].value
 
+                ws = wb.sheets["妥投异常及取消订单运费"]
+                last_cell = ws.used_range.last_cell
+                max_row, max_col = last_cell.row, last_cell.column
+                header: List = ws[f"A1:{get_column_letter(max_col)}1"].value
+
+                business_freight += ws[f"{get_column_letter(header.index('运费账户消耗') + 1)}{max_row}"].value
+
         ws = self.wb[f"{GOL.last_month.year}年Bread自营外卖"]
         row_i = [ws.cell(i, 1).value.strftime("%Y.%m") for i in range(3, 15)]
         row_i = row_i.index(GOL.last_month.strftime("%Y.%m")) + 3
@@ -1108,9 +1146,9 @@ def init_chrome(path, download_path, user_path):
 
 def crawler_main(chrome_path, download_path, user_path):
     """网站抓取的主方法"""
-    try:
-        print("启动浏览器，开始爬虫抓取")
-        with init_chrome(chrome_path, download_path, user_path) as driver:
+    print("启动浏览器，开始爬虫抓取")
+    with init_chrome(chrome_path, download_path, user_path) as driver:
+        try:
             meituan = MeiTuanCrawler(driver, download_path)
             print("登录并打开美团网站")
             meituan.login()
@@ -1136,10 +1174,10 @@ def crawler_main(chrome_path, download_path, user_path):
             print("等待网站上的EXCEL文件导出完毕,并移动EXCEL到相应位置")
             meituan.wait_download_finnish()
             dada.wait_download_finnish()
-    except Exception:
-        print(traceback.format_exc())
-        return
-    print("爬虫部分已完成")
+            print("爬虫部分已完成")
+        except Exception:
+            print(traceback.format_exc())
+            raise Exception("爬虫异常，退出程序")
 
 
 def operation_detail_main(template_path):
@@ -1178,8 +1216,12 @@ def eleme_main():
 def dada_autotrophy_main():
     """达达门店订单明细处理的主方法"""
     excel = DaDaAutotrophy()
-    print("处理自营外卖订单")
-    excel.autotrophy_order()
+    print("从达达原始数据中提取所需数据")
+    data1, data2 = excel.extract_data()
+    print("新建自营外卖订单分表")
+    excel.autotrophy_order(data1)
+    print("新建妥投异常分表")
+    excel.proper_anomaly(data2)
     print("保存文件")
     excel.save()
     print("达达门店明细的留存表已整理完毕")
@@ -1227,8 +1269,8 @@ def main():
     GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"自营外卖{date_str}(美团后台).xlsx")
     GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"自营外卖{date_str}(达达).xlsx")
     # 从美团网站上下载相关EXCEL文件
-    crawler_main(chrome_path, download_path, user_path)
-    # 汇总营业明细表
+    crawler_main(chrome_path, download_path, user_path):
+        # 汇总营业明细表
     operation_detail_main(operate_detail_template)
     # 饿了么导出数据的处理
     eleme_main()
