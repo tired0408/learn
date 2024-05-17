@@ -125,7 +125,7 @@ class SPFJWeb:
         clear_and_send(self.driver.find_element(By.ID, "pwd"), password)
         Select(self.driver.find_element(By.ID, "own")).select_by_visible_text(district_name)
         self.driver.find_element(By.ID, "login").click()
-        WebDriverWait(self.driver, 1).until(EC.visibility_of_element_located((By.ID, "butn")))
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "butn")))
         print(f"[国控福建]{user}用户已登录")
 
     def purchase_sale_stock(self, start_date=None):
@@ -440,7 +440,7 @@ class DruggcWeb:
                 self.driver.find_element(By.ID, "login").click()
                 captcha_tip = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
                 try:
-                    WebDriverWait(self.driver, 1).until(captcha_tip)
+                    WebDriverWait(self.driver, 10).until(captcha_tip)
                 except TimeoutException:
                     break
                 WebDriverWait(self.driver, 5).until_not(captcha_tip)
