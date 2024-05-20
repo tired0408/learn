@@ -28,16 +28,16 @@ from selenium.webdriver.remote.webelement import WebElement
 
 class Store:
 
-    def __init__(self, name):
+    def __init__(self, name, is_picture, is_annex, is_comment):
         dir_path = r"E:\NewFolder\zhishi"
         self.txt_path = os.path.join(dir_path, f"{name}.txt")
-        self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片")
+        self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片") if is_picture else (None, 0)
         self.pool = ThreadPoolExecutor(max_workers=10)
         self.tasks: List[Future] = []
-        self.annex_path, _ = self.init_folder(dir_path, f"{name}的附件")
+        self.annex_path, _ = self.init_folder(dir_path, f"{name}的附件") if is_annex else (None, 0)
         self.annex_download_list = collections.deque()
         self.chrome_download = r"D:\Download"
-        self.comment_path, self.comment_index = self.init_folder(dir_path, f"{name}的评论")
+        self.comment_path, self.comment_index = self.init_folder(dir_path, f"{name}的评论") if is_comment else (None, 0)
         self.f = open(self.txt_path, 'a', encoding='utf-8')
 
     def __del__(self):
@@ -174,8 +174,8 @@ class Crawler:
         self.driver = self.init_chrome()  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
         self.actions = ActionChains(self.driver)
-        self.owner = Store(name)
-        self.member = Store(f"{name}_成员") if not is_owner else None
+        self.owner = Store(name, is_img, is_pdf, comment_name is not None)
+        self.member = Store(f"{name}_成员", is_img, is_pdf, comment_name is not None) if not is_owner else None
 
     def init_chrome(self):
         """定义谷歌浏览器"""
