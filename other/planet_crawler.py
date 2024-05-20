@@ -128,6 +128,8 @@ class Store:
 
     def wait_annex(self):
         """等待附件保存完成"""
+        last_len = len(self.annex_download_list)
+        repeat_num = 0
         while len(self.annex_download_list) != 0:
             for _ in tqdm(range(len(self.annex_download_list))):
                 name = self.annex_download_list.popleft()
@@ -138,6 +140,15 @@ class Store:
                 else:
                     self.annex_download_list.append(name)
                     time.sleep(1)
+            if last_len == len(self.annex_download_list):
+                repeat_num += 1
+            else:
+                last_len = len(self.annex_download_list)
+                repeat_num = 0
+            if repeat_num > 10:
+                print("重复循环多次没有变化，退出循环")
+                print(f"问题列表:{self.annex_download_list}")
+                break
 
     def write_info(self, name, date, ctype, content, images, annexs, comment):
         """写入文字信息"""
@@ -159,23 +170,24 @@ class Store:
 
 class Crawler:
 
-    def __init__(self, name, is_owner=False, is_pdf=False, is_img=False, comment_name=None):
+    def __init__(self, name, is_owner=False, is_img=False, annex_name=None, comment_name=None):
         """
         初始化
         :param name: (str); 星球名称
         :param is_owner: (bool); 是否只看星主
-        :param is_pdf: (bool); 是否下载PDF
         :param is_img: (bool); 是否下载图片
-        :param comment_name: (bool); 抓取评论的人名
+        :param annex_name: (srt); 下载附件的后缀名,用,分割,"all"为全部抓取,None为不抓取
+        :param comment_name: (str); 抓取评论的人名
         """
-        self.is_pdf = is_pdf
         self.is_img = is_img
+        self.annex_name = annex_name
         self.comment_name = comment_name
         self.driver = self.init_chrome()  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
         self.actions = ActionChains(self.driver)
-        self.owner = Store(name, is_img, is_pdf, comment_name is not None)
-        self.member = Store(f"{name}_成员", is_img, is_pdf, comment_name is not None) if not is_owner else None
+        self.owner = Store(name, is_img, annex_name is not None, comment_name is not None)
+        self.member = Store(f"{name}_成员", is_img, annex_name is not None,
+                            comment_name is not None) if not is_owner else None
 
     def init_chrome(self):
         """定义谷歌浏览器"""
@@ -236,7 +248,7 @@ class Crawler:
                     month_ele.reverse()
                     for month_selector in month_ele:
                         month_name = int(self.analysis_text(month_selector)[:-1])
-                        if month_name < date.month:
+                        if year_name == date.year and month_name < date.month:
                             print(f"跳过{year_name}年{month_name}月,开始日期为:{date}")
                             continue
                         if "active" not in month_selector.get_attribute("class"):
@@ -427,7 +439,7 @@ class Crawler:
 
     def analysis_and_download_annex(self, container: WebElement, store: Store):
         """分析并下载附件"""
-        if not self.is_pdf:
+        if self.annex_name is None:
             return []
         try:
             values = container.find_element(By.TAG_NAME, "app-file-gallery").find_elements(By.CLASS_NAME, "item")
@@ -436,6 +448,9 @@ class Crawler:
             names = []
             for element in values:
                 name = element.find_element(By.CLASS_NAME, "file-name").text
+                file_type = name.split(".")[-1]
+                if self.annex_name != "all" and file_type not in self.annex_name:
+                    continue
                 names.append(name)
                 if store.annex_exists(name):
                     continue
@@ -455,10 +470,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--owner", action="store_true", help="是否只看星主,默认查看全部")
-    parser.add_argument("-p", "--pdf", action="store_true", help="是否下载PDF,默认不下载")
     parser.add_argument("-i", "--img", action="store_true", help="是否下载图片,默认不下载")
+    parser.add_argument("-a", "--annex", type=str, default=None, help="下载附件的后缀名,用,间隔")
     parser.add_argument("-c", "--comment", type=str, default=None, help="抓取评论的名字")
-    parser.add_argument("-d", "--date", type=str, default="1800.01.01_00.00", help="抓取的开始日期,例如:2022.11.30 11-57")
+    parser.add_argument("-d", "--date", type=str, default="1800.01.01_00.00", help="抓取的开始日期,例如:2022.11.30_11.57")
     parser.add_argument("-u", "--url", type=str, default=None, help="知识星球的URL")
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
@@ -473,6 +488,6 @@ if __name__ == "__main__":
     assert opt["url"] is not None
     assert opt["name"] is not None
     opt["date"] = datetime.datetime.strptime(opt["date"], "%Y.%m.%d_%H.%M")
-    module = Crawler(opt["name"], is_owner=opt["owner"], is_pdf=opt["pdf"],
-                     is_img=opt["img"], comment_name=opt["comment"])
+    module = Crawler(opt["name"], is_owner=opt["owner"], is_img=opt["img"], annex_name=opt["annex"],
+                     comment_name=opt["comment"])
     module.run(opt["url"], date=opt["date"])
