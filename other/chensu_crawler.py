@@ -21,7 +21,7 @@ class DataToExcel:
     def __init__(self, save_path, database_path):
         self.save_path = save_path
         self.database = self.init_production_database(database_path)  # 产品数据库
-        self.data = collections.defaultdict(lambda: collections.defaultdict(set))
+        self.data = collections.defaultdict(lambda: collections.defaultdict(list))
         self.widths = [10, 10, 10, 12, 14]
         self.date = datetime.datetime.today()
         self.date_style = xlwt.XFStyle()
@@ -75,13 +75,13 @@ class DataToExcel:
             web_data = self.data[client_name]
             write_value = []  # 写入的数据:产品标准名称，数量, 参考信息，备注
             for product_name, [standard_name, reference] in name2standard.items():
-                number = int(np.sum(list(web_data.pop(product_name)))) if product_name in web_data else 0
+                number = int(np.sum(web_data.pop(product_name))) if product_name in web_data else 0
                 if standard_name == "外用红色诺卡氏菌细胞壁骨架":
                     number = number * 2
                 write_value.append([standard_name, number, reference, ""])
 
             for product_name, number in web_data.items():
-                number = int(np.sum(list(number)))
+                number = int(np.sum(number))
                 write_value.append([product_name, number, "", "未在产品库找到"])
 
             for standard_name, number, reference, remark in write_value:
@@ -135,9 +135,15 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
             try:
                 method_list = url2method[website_url]
                 method_list[0](**data)
+                # 不同账号重复商品，只取其中一个账户，除了复方α-酮酸片
+                this_account = collections.defaultdict(list)
                 for value in method_list[1]():
                     product_name, amount = [value[i] for i in method_list[2]]
-                    crawler_data[client_name][product_name].add(amount)
+                    this_account[product_name].append(amount)
+                    if "复方α-酮酸片" in product_name:
+                        crawler_data[client_name][product_name].append(amount)
+                crawler_data[client_name].update(this_account)
+
             except Exception:
                 print("-" * 150)
                 print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
@@ -148,7 +154,7 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
                 return True
         return False
 
-    crawler_data = collections.defaultdict(lambda: collections.defaultdict(set))
+    crawler_data = collections.defaultdict(lambda: collections.defaultdict(list))
     print("抓取无验证码的网站数据")
     driver = init_chrome(exe_path, False)
     spfj = SPFJWeb(driver)
@@ -196,8 +202,12 @@ def main(websites_path, chrome_exe_path, save_path, database_path):
 
 
 if __name__ == "__main__":
-    user_folder = r"E:\NewFolder\chensu"
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
+    opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
 
+    user_folder = opt["path"]
     set_chrome_exe_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
     set_websites_path = os.path.join(user_folder, "库存网查明细.xlsx")
     set_database_path = os.path.join(user_folder, "脚本产品库.xlsx")
