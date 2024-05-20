@@ -192,10 +192,11 @@ def gain_database(path):
     rd = collections.defaultdict(dict)
     database = pd.read_excel(path)
     for _, row in database.iterrows():
-        v0, v1, v2, _, _ = row
-        if v1 == "":
+        client_production: str = row[1]
+        if client_production == "":
             continue
-        rd[v0][v1] = v2
+        client_production = client_production.replace(" ", "")
+        rd[row[0]][client_production] = row[2]
     return rd
 
 
@@ -278,6 +279,6 @@ if __name__ == "__main__":
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
-    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年4月第3周周进销存报表（福建）-主席.xlsx"
+    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年5月第2周周进销存报表（福建）.xlsx"
     set_week_interval = 1  # 间隔的查询周数
     main(set_chrome_exe_path, set_websites_path, set_save_path, set_database_path, set_week_interval)

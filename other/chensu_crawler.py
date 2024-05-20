@@ -43,9 +43,11 @@ class DataToExcel:
         rd = collections.defaultdict(dict)
         database = pd.read_excel(database_path)
         for _, row in database.iterrows():
-            v0, v1, v2, v3, _ = row
-            v3 = "" if pd.isna(v3) else v3
-            rd[v0][v1] = [v2, v3]
+            client_production: str = row[1]
+            remark = row[3]
+            client_production = client_production.replace(" ", "")
+            remark = "" if pd.isna(remark) else remark
+            rd[row[0]][client_production] = [row[2], remark]
         return rd
 
     def save(self):
