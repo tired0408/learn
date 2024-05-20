@@ -10,10 +10,11 @@ import pandas as pd
 import numpy as np
 from re import Match
 from tqdm import tqdm
-from typing import Dict, List
+from typing import Dict, List, Tuple
 from datetime import datetime, timedelta
 from openpyxl.cell.cell import Cell
 from openpyxl.styles import PatternFill
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.utils.cell import column_index_from_string
 from medicine_utils import start_socket, init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb
 
@@ -32,18 +33,17 @@ class DataToExcel:
     """读取xlsx文件,并修改里面的数值"""
 
     def __init__(self, path, interval=1) -> None:
-        self.path = path
-        self.wb = openpyxl.load_workbook(self.path)
-        self.ws = self.create_ws(interval)
+        self.wb = openpyxl.load_workbook(path)
+        self.ws, self.path = self.create_ws(interval, path)
 
     def __del__(self):
-        self.wb.close()
+        self.wb.close(self.path)
 
     def save(self):
         """保存文件"""
         self.wb.save(self.path)
 
-    def create_ws(self, interval):
+    def create_ws(self, interval, path: str) -> Tuple[Worksheet, str]:
         """创建工作表"""
         last_ws = self.wb.worksheets[0]
         now_date = datetime.now().strftime("%Y/%m/%d")
@@ -52,17 +52,22 @@ class DataToExcel:
         print("复制工作表")
         ws = self.wb.copy_worksheet(last_ws)
         week_pattern: Match = re.search(r"^(\d+)月(\d+)周$", last_ws.title)
-        month, week = week_pattern.groups()
-        week = int(week) + interval
-        ws.title = f"{int(month) + 1}月1周" if week > 4 else f"{month}月{week}周"
+        last_month, last_week = week_pattern.groups()
+        if int(last_week) > 4 - interval:
+            month = int(last_month) + 1
+            week = 1
+        else:
+            month = last_month
+            week = int(last_week) + interval
+        ws.title = f"{month}月{week}周"
         self.wb.move_sheet(ws, offset=-self.wb.index(ws))
         print("删除颜色")
         for row in ws.iter_rows():
             for cell in row:
                 assert isinstance(cell, Cell)
                 cell.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-        self.save()
-        return ws
+        path = path.replace(f"2024年{last_month}月第{last_week}周", f"2024年{month}月第{week}周")
+        return ws, path
 
     def write_to_excel(self, all_data: Dict[str, ClientData]):
         """将数据写入excel表格"""
@@ -92,7 +97,6 @@ class DataToExcel:
                 self.ws.cell(row_i, column_index_from_string("Q"), "")  # 本周库存
                 self.ws.cell(row_i, column_index_from_string("R"), "")  # 批号
                 self.ws.cell(row_i, column_index_from_string("S"), "")  # 备注（记录破损情况）
-        self.save()
 
     def judge_worn(self, row_index, actual_sale):
         """判断是否有破损"""
@@ -271,6 +275,7 @@ def main(chrome_exe_path, websites_path, save_path, database_path, week_interval
     writer = DataToExcel(save_path, interval=week_interval)
     print("将数据写入到excel表格中")
     writer.write_to_excel(crawler_data)
+    writer.save()
     print("程序运行已完成")
 
 
