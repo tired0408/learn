@@ -197,7 +197,7 @@ def gain_database(path):
     database = pd.read_excel(path)
     for _, row in database.iterrows():
         client_production: str = row[1]
-        if client_production == "":
+        if pd.isna(client_production):
             continue
         client_production = client_production.replace(" ", "")
         rd[row[0]][client_production] = row[2]
