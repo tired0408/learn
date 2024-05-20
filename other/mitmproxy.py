@@ -35,6 +35,8 @@ class BaiduOCRApi:
         response = requests.post(self.url, data={"image": value})
         if response:
             data = response.json()
+            if "words_result" not in data:
+                return ""
             number = "".join([str(value["words"]) for value in data["words_result"]])
             return number
 
