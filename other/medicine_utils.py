@@ -19,10 +19,12 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
 
-def init_chrome(exe_path, is_proxy=True):
+def init_chrome(chromedriver_path, chrome_path=None, is_proxy=True):
     """初始化浏览器"""
-    service = Service(exe_path)
+    service = Service(chromedriver_path)
     options = Options()
+    if chrome_path is not None:
+        options.binary_location = chrome_path
     if is_proxy:
         options.add_argument('--proxy-server=127.0.0.1:8080')
         options.add_argument('ignore-certificate-errors')

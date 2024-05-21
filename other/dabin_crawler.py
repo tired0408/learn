@@ -37,7 +37,7 @@ class DataToExcel:
         self.ws, self.path = self.create_ws(interval, path)
 
     def __del__(self):
-        self.wb.close(self.path)
+        self.wb.close()
 
     def save(self):
         """保存文件"""
@@ -204,7 +204,7 @@ def gain_database(path):
     return rd
 
 
-def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code,
+def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_code, websites_no_code,
                      week_interval) -> Dict[str, ClientData]:
     """从网站上爬取数据"""
     def crawler_general(datas: List[dict], url2method):
@@ -235,7 +235,7 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
     start_date_str = start_date.strftime("%Y-%m-%d")
     if len(websites_no_code) != 0:
         print("抓取无验证码的网站数据")
-        driver = init_chrome(exe_path, False)
+        driver = init_chrome(chromedriver_path, chrome_path=chrome_path, is_proxy=False)
         spfj = SPFJWebSelf(driver)
         inca = INCAWebSelf(driver)
         luyan = LYWebSelf(driver)
@@ -252,7 +252,7 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
     if len(websites_by_code) != 0:
         print("抓取有验证码的网站数据")
         q = start_socket()
-        driver = init_chrome(exe_path)
+        driver = init_chrome(chromedriver_path, chrome_path=chrome_path)
         druggc = DruggcWebSelf(driver, q)
         url_condition = {
             druggc.url: druggc.get_datas
@@ -264,13 +264,14 @@ def crawler_from_web(exe_path, database_path, websites_by_code, websites_no_code
     return rd
 
 
-def main(chrome_exe_path, websites_path, save_path, database_path, week_interval):
+def main(chrome_path, chromedriver_path, websites_path, save_path, database_path, week_interval):
     print("读取断点数据")
     breakpoint_names = gain_breakpoint(save_path)
     print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
     print("从网站上爬取数据")
-    crawler_data = crawler_from_web(chrome_exe_path, database_path, websites_by_code, websites_no_code, week_interval)
+    crawler_data = crawler_from_web(chrome_path, chromedriver_path, database_path,
+                                    websites_by_code, websites_no_code, week_interval)
     print("定义数据写入类")
     writer = DataToExcel(save_path, interval=week_interval)
     print("将数据写入到excel表格中")
@@ -280,10 +281,11 @@ def main(chrome_exe_path, websites_path, save_path, database_path, week_interval
 
 
 if __name__ == "__main__":
-    set_chrome_exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    set_chromedriver_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    set_chrome_path = r"E:\NewFolder\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe"
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
     set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年5月第2周周进销存报表（福建）.xlsx"
     set_week_interval = 1  # 间隔的查询周数
-    main(set_chrome_exe_path, set_websites_path, set_save_path, set_database_path, set_week_interval)
+    main(set_chrome_path, set_chromedriver_path, set_websites_path, set_save_path, set_database_path, set_week_interval)
