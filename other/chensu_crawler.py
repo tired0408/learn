@@ -209,7 +209,7 @@ if __name__ == "__main__":
 
     user_folder = opt["path"]
     set_chrome_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe")
-    set_chromedriver_path = s.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
+    set_chromedriver_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
     set_websites_path = os.path.join(user_folder, "库存网查明细.xlsx")
     set_database_path = os.path.join(user_folder, "脚本产品库.xlsx")
     now_day = datetime.date.today().strftime('%Y%m%d')
