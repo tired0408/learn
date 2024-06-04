@@ -12,7 +12,7 @@ import pandas as pd
 import numpy as np
 from typing import Tuple, List
 from xlwt.Worksheet import Worksheet
-from medicine_utils import init_chrome, analyze_website, start_socket, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import init_chrome, analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
 
 
 class DataToExcel:
@@ -171,10 +171,10 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     print("关闭浏览器")
     driver.quit()
     print("抓取有验证码的网站数据")
-    q = start_socket()
+    sock = CaptchaSocketServer()
     driver = init_chrome(chromedriver_path, chrome_path=chrome_path)
-    tc = TCWeb(driver, q)
-    druggc = DruggcWeb(driver, q)
+    tc = TCWeb(driver, sock)
+    druggc = DruggcWeb(driver, sock)
     url_condition = {
         tc.url: [tc.login, tc.get_inventory, [0, 1]],
         druggc.url: [druggc.login, druggc.get_inventory, [0, 1]]

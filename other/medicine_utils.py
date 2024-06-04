@@ -114,6 +114,37 @@ def get_url_success(driver: Chrome, url, element_type, element_value):
         raise Exception(f"多次登入失败，请检查网站是否能访问:{url}")
 
 
+class CaptchaSocketServer:
+
+    def __init__(self) -> None:
+        self.sock = self.init_sock()
+        self.conn = None
+
+    def __del__(self):
+        if self.conn is not None:
+            print("关闭连接")
+            self.conn.close()
+        print("关闭套接字")
+        self.sock.close()
+
+    def init_sock(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(60)
+        sock.bind(('localhost', 12345))
+        sock.listen()
+        print("服务已启动,监听IP:localhost, 端口: 12345")
+        return sock
+
+    def recv(self):
+        if self.conn is None:
+            self.conn, addr = self.sock.accept()
+            print(f"连接自: {addr}")
+        data = self.conn.recv(1024)
+        data = data.decode()
+        print(f"接收到数据: {data}")
+        return data
+
+
 class SPFJWeb:
     """国控福建网站的数据抓取"""
     url = r"https://www.sinopharm-fj.com/spfj/flows/"
@@ -376,7 +407,7 @@ class TCWeb:
 
     def __init__(self, driver, captcha) -> None:
         self.driver: Chrome = driver
-        self.captcha: Queue = captcha
+        self.captcha: CaptchaSocketServer = captcha
 
     def login(self, user, password):
         get_url_success(self.driver, self.url, By.ID, "imgLogin")
@@ -385,7 +416,7 @@ class TCWeb:
                 WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "imgLogin")))
                 clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
                 clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
-                captcha_value = self.captcha.get(timeout=60)
+                captcha_value = self.captcha.recv()
                 print(f"输入验证码:{captcha_value}")
                 clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha_value)
                 self.driver.find_element(By.ID, "imgLogin").click()
@@ -427,7 +458,7 @@ class DruggcWeb:
 
     def __init__(self, driver, captcha) -> None:
         self.driver: Chrome = driver
-        self.captcha: Queue = captcha
+        self.captcha: CaptchaSocketServer = captcha
 
     def login(self, user, password, district_name):
         get_url_success(self.driver, self.url, By.ID, "login")
@@ -435,21 +466,21 @@ class DruggcWeb:
         clear_and_send(self.driver.find_element(By.ID, "password"), password)
         Select(self.driver.find_element(By.ID, "entryid")).select_by_visible_text(district_name)
         while True:
-            captcha = self.captcha.get(timeout=60)
+            captcha = self.captcha.recv()
             print(f"输入验证码:{captcha}")
-            if len(captcha) == 4:
-                clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
-                self.driver.find_element(By.ID, "login").click()
-                captcha_tip = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
-                try:
-                    WebDriverWait(self.driver, 10).until(captcha_tip)
-                except TimeoutException:
-                    break
-                WebDriverWait(self.driver, 5).until_not(captcha_tip)
-            else:
-                print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
+            if len(captcha) != 4:
+                self.driver.find_element(By.ID, "captchaImg").click()
+                continue
+            clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
+            self.driver.find_element(By.ID, "login").click()
+            c1 = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
+            c2 = EC.visibility_of_element_located((By.ID, "side-menu"))
+            ele = WebDriverWait(self.driver, 5).until(EC.any_of(c1, c2))
+            if ele.get_attribute("id") == "side-menu":
+                break
+            print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
             self.driver.find_element(By.ID, "captchaImg").click()
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "side-menu")))
+            WebDriverWait(self.driver, 10).until(EC.invisibility_of_element())
         print(f"[片仔癀宏仁医药]{user}用户已登录")
 
     def get_inventory(self):
@@ -503,23 +534,14 @@ class DruggcWeb:
         if start_date is not None:
             start_element = self.driver.find_element(By.ID, "beginCreateTime")
             self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
-        try:
-            self.driver.find_element(By.XPATH, "//button[text()='查询']").click()
-        except NoSuchElementException:
-            pass
+            c1 = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
+            WebDriverWait(self.driver, 60).until_not(c1)
+            ele = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='查询']")))
+            ele.click()
         rd = []
         while True:
             condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
-            WebDriverWait(self.driver, 10).until_not(condition)
-            # 网站有个BUG，数据显示太慢，会先显示没有匹配到数据，然后再显示数据
-            try:
-                self.driver.find_element(By.CLASS_NAME, "no-records-found")
-                condition = EC.visibility_of_element_located((By.CLASS_NAME, "no-records-found"))
-                WebDriverWait(self.driver, 10).until_not(condition)
-            except NoSuchElementException:
-                pass
-            except TimeoutException:
-                break
+            WebDriverWait(self.driver, 60).until_not(condition)
             values = self.driver.find_element(By.ID, "dataTable")
             values = values.find_elements(By.TAG_NAME, "tr")
             for each_v in values[1:]:

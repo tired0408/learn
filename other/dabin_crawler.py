@@ -16,7 +16,32 @@ from openpyxl.cell.cell import Cell
 from openpyxl.styles import PatternFill
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.utils.cell import column_index_from_string
-from medicine_utils import start_socket, init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb
+from medicine_utils import init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
+
+
+class GolbalData:
+    """全局数据"""
+
+    def __init__(self) -> None:
+        self.database: collections.defaultdict = None
+
+    def gain_database(self, path):
+        """获取数据库"""
+        self.database = collections.defaultdict(str)
+        database = pd.read_excel(path)
+        for _, row in database.iterrows():
+            client_production: str = row[1]
+            if pd.isna(client_production):
+                continue
+            client_production = client_production.replace(" ", "")
+            self.database[client_production] = row[2]
+
+    def get_standard(self, name):
+        """根据商品名获取标准名称"""
+        if name not in self.database:
+            print(f"############未在产品库里，请及时添加:{name}")
+            return None
+        return self.database[name]
 
 
 class ClientData:
@@ -110,28 +135,36 @@ class DataToExcel:
 
 class SPFJWebSelf(SPFJWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
         """获取所需数据"""
         self.login(user, password, district_name)
         for product_name, purchase, sale, inventory in self.purchase_sale_stock(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.purchase[standard].append(purchase)
             save_data.sales[standard].append(sale)
             save_data.inventory[standard].append(inventory)
         for product_name, _, code in self.get_inventory(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.code[standard].append(code)
 
 
 class LYWebSelf(LYWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
         self.login(user, password, district_name)
         for product_name, _, code in self.get_inventory():
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.code[standard].append(code)
         for product_name, purchase, sale, inventory in self.purchase_sale_stock(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.purchase[standard].append(purchase)
             save_data.sales[standard].append(sale)
             save_data.inventory[standard].append(inventory)
@@ -139,33 +172,45 @@ class LYWebSelf(LYWeb):
 
 class DruggcWebSelf(DruggcWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData, name2standard):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
         self.login(user, password, district_name)
         for product_name, inventory, code in self.get_inventory():
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.inventory[standard].append(inventory)
             save_data.code[standard].append(code)
         for product_name, amount in self.get_purchase(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.purchase[standard].append(amount)
         for product_name, amount in self.get_sales(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.sales[standard].append(amount)
 
 
 class INCAWebSelf(INCAWeb):
 
-    def get_datas(self, user, password, start_date_str, save_data: ClientData, name2standard):
+    def get_datas(self, user, password, start_date_str, save_data: ClientData):
         self.login(user, password)
         for product_name, inventory, code in self.get_inventory():
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.inventory[standard].append(inventory)
             save_data.code[standard].append(code)
         for product_name, amount in self.get_purchase(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.purchase[standard].append(amount)
         for product_name, amount in self.get_sales(start_date_str):
-            standard = name2standard[product_name]
+            standard = GOL.get_standard(product_name)
+            if standard is None:
+                continue
             save_data.sales[standard].append(amount)
 
 
@@ -191,20 +236,7 @@ def gain_breakpoint(path):
     return rd
 
 
-def gain_database(path):
-    """获取数据库"""
-    rd = collections.defaultdict(dict)
-    database = pd.read_excel(path)
-    for _, row in database.iterrows():
-        client_production: str = row[1]
-        if pd.isna(client_production):
-            continue
-        client_production = client_production.replace(" ", "")
-        rd[row[0]][client_production] = row[2]
-    return rd
-
-
-def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_code, websites_no_code,
+def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code,
                      week_interval) -> Dict[str, ClientData]:
     """从网站上爬取数据"""
     def crawler_general(datas: List[dict], url2method):
@@ -214,7 +246,6 @@ def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_
             try:
                 data["start_date_str"] = start_date_str
                 data["save_data"] = rd[client_name]
-                data["name2standard"] = all_name2standard[client_name]
                 url2method[website_url](**data)
             except Exception:
                 print("-" * 150)
@@ -225,10 +256,7 @@ def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_
                 rd.pop(client_name)
                 return True
         return False
-
     rd = collections.defaultdict(ClientData)
-    print("获取数据库")
-    all_name2standard = gain_database(database_path)
     print("计算开始时间")
     start_date = datetime.now()
     start_date = start_date - timedelta(days=start_date.weekday() + 7 * (week_interval - 1))
@@ -251,9 +279,9 @@ def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_
             return rd
     if len(websites_by_code) != 0:
         print("抓取有验证码的网站数据")
-        q = start_socket()
+        sock = CaptchaSocketServer()
         driver = init_chrome(chromedriver_path, chrome_path=chrome_path)
-        druggc = DruggcWebSelf(driver, q)
+        druggc = DruggcWebSelf(driver, sock)
         url_condition = {
             druggc.url: druggc.get_datas
         }
@@ -264,14 +292,18 @@ def crawler_from_web(chrome_path, chromedriver_path, database_path, websites_by_
     return rd
 
 
+GOL = GolbalData()
+
+
 def main(chrome_path, chromedriver_path, websites_path, save_path, database_path, week_interval):
+    print("获取数据库")
+    GOL.gain_database(database_path)
     print("读取断点数据")
     breakpoint_names = gain_breakpoint(save_path)
     print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
     print("从网站上爬取数据")
-    crawler_data = crawler_from_web(chrome_path, chromedriver_path, database_path,
-                                    websites_by_code, websites_no_code, week_interval)
+    crawler_data = crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code, week_interval)
     print("定义数据写入类")
     writer = DataToExcel(save_path, interval=week_interval)
     print("将数据写入到excel表格中")
@@ -286,6 +318,6 @@ if __name__ == "__main__":
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
-    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年5月第2周周进销存报表（福建）.xlsx"
+    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年5月第3周周进销存报表（福建）.xlsx"
     set_week_interval = 1  # 间隔的查询周数
     main(set_chrome_path, set_chromedriver_path, set_websites_path, set_save_path, set_database_path, set_week_interval)
