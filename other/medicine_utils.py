@@ -347,13 +347,13 @@ class LYWeb:
 
     def get_inventory(self):
         """
-        获取库存数据
+        获取库存明细信息数据（该地方的库存总数相同产品不可叠加，）
         :return: [(商品名称, 库存数量, 批号), ...]
         """
         def deal_func(elements: List[WebElement]):
             product_name = elements[0].text + elements[1].text
             product_name = product_name.replace(" ", "")
-            amount = int(float(elements[3].text))
+            amount = int(float(elements[2].text))
             code = str(elements[5].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_func, "库存明细信息")
@@ -362,7 +362,7 @@ class LYWeb:
 
     def purchase_sale_stock(self, start_date):
         """
-        进销存数据抓取
+        进销存汇总数据抓取
         :return: [(商品名称, 进货数量, 销售数量, 库存数量), ...]
         """
         def deal_func(elements: List[WebElement]):
@@ -476,11 +476,12 @@ class DruggcWeb:
             c1 = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
             c2 = EC.visibility_of_element_located((By.ID, "side-menu"))
             ele = WebDriverWait(self.driver, 5).until(EC.any_of(c1, c2))
+            print(f"[片仔癀宏仁医药]等待的元素ID:{ele.get_attribute('id')}")
             if ele.get_attribute("id") == "side-menu":
                 break
             print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
             self.driver.find_element(By.ID, "captchaImg").click()
-            WebDriverWait(self.driver, 10).until(EC.invisibility_of_element())
+        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "side-menu")))
         print(f"[片仔癀宏仁医药]{user}用户已登录")
 
     def get_inventory(self):
@@ -546,6 +547,8 @@ class DruggcWeb:
             values = values.find_elements(By.TAG_NAME, "tr")
             for each_v in values[1:]:
                 each_v = each_v.find_elements(By.TAG_NAME, "td")
+                if each_v[0].text == '没有找到匹配的记录':
+                    return rd
                 rd.append(deal_func(each_v))
             page_info = self.driver.find_element(By.CLASS_NAME, "fixed-table-pagination")
             page_numbers = re.findall(r'\d+', page_info.find_element(By.CLASS_NAME, "pagination-info").text)

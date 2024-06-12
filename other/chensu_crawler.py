@@ -43,11 +43,11 @@ class DataToExcel:
         rd = collections.defaultdict(dict)
         database = pd.read_excel(database_path)
         for _, row in database.iterrows():
-            client_production: str = row[1]
-            remark = row[3]
+            client_production: str = row.iloc[1]
+            remark = row.iloc[3]
             client_production = client_production.replace(" ", "")
             remark = "" if pd.isna(remark) else remark
-            rd[row[0]][client_production] = [row[2], remark]
+            rd[row.iloc[0]][client_production] = [row.iloc[2], remark]
         return rd
 
     def save(self):
@@ -137,7 +137,8 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
                 method_list[0](**data)
                 # 不同账号重复商品，只取其中一个账户，除了复方α-酮酸片
                 this_account = collections.defaultdict(list)
-                for value in method_list[1]():
+                this_data = method_list[1]()
+                for value in this_data:
                     product_name, amount = [value[i] for i in method_list[2]]
                     this_account[product_name].append(amount)
                     if "复方α-酮酸片" in product_name:

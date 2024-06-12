@@ -32,13 +32,18 @@ class BaiduOCRApi:
         return request_url
 
     def recongnize(self, value):
-        response = requests.post(self.url, data={"image": value})
-        if response:
-            data = response.json()
-            if "words_result" not in data:
-                return ""
-            number = "".join([str(value["words"]) for value in data["words_result"]])
-            return number
+        try:
+            response = requests.post(self.url, data={"image": value})
+            if response:
+                data = response.json()
+                if "words_result" not in data:
+                    return ""
+                number = "".join([str(value["words"]) for value in data["words_result"]])
+                return number
+            return ""
+        except requests.exceptions.ConnectionError:
+            print("请求百度接口异常.")
+            return ""
 
 
 class CaptchaSocketClient:
