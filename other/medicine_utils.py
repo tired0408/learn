@@ -492,7 +492,7 @@ class DruggcWeb:
         def deal_inventory(elements: List[WebElement]):
             product_name = elements[0].text + elements[2].text
             product_name = product_name.replace(" ", "")
-            amount = int(elements[-2].text)
+            amount = int(elements[7].text)
             code = str(elements[4].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_inventory, "库存明细")

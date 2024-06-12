@@ -2,19 +2,16 @@
 爬虫抓取大饼所需的进销存报表,并导出为xlsx表格
 接受OCR识别请求地址,  http://localhost:8557/ocr
 """
-import re
 import openpyxl
 import traceback
 import collections
 import pandas as pd
 import numpy as np
-from re import Match
 from tqdm import tqdm
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from datetime import datetime, timedelta
-from openpyxl.cell.cell import Cell
+from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.styles import PatternFill
-from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.utils.cell import column_index_from_string
 from medicine_utils import init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
 
@@ -57,9 +54,11 @@ class ClientData:
 class DataToExcel:
     """读取xlsx文件,并修改里面的数值"""
 
-    def __init__(self, path, interval=1) -> None:
+    def __init__(self, path) -> None:
+        self.path = path
         self.wb = openpyxl.load_workbook(path)
-        self.ws, self.path = self.create_ws(interval, path)
+        self.ws = self.init_ws()
+        self.breakpoint = self.gain_breakpoint(path)
 
     def __del__(self):
         self.wb.close()
@@ -68,31 +67,38 @@ class DataToExcel:
         """保存文件"""
         self.wb.save(self.path)
 
-    def create_ws(self, interval, path: str) -> Tuple[Worksheet, str]:
-        """创建工作表"""
-        last_ws = self.wb.worksheets[0]
-        now_date = datetime.now().strftime("%Y/%m/%d")
-        if last_ws.cell(3, 1).value.strftime("%Y/%m/%d") == now_date:
-            return last_ws
-        print("复制工作表")
-        ws = self.wb.copy_worksheet(last_ws)
-        week_pattern: Match = re.search(r"^(\d+)月(\d+)周$", last_ws.title)
-        last_month, last_week = week_pattern.groups()
-        if int(last_week) > 4 - interval:
-            month = int(last_month) + 1
-            week = 1
-        else:
-            month = last_month
-            week = int(last_week) + interval
-        ws.title = f"{month}月{week}周"
-        self.wb.move_sheet(ws, offset=-self.wb.index(ws))
+    def init_ws(self):
+        """初始化工作表"""
+        ws = self.wb.active
         print("删除颜色")
         for row in ws.iter_rows():
             for cell in row:
-                assert isinstance(cell, Cell)
+                if not isinstance(cell, Cell) and not isinstance(cell, MergedCell):
+                    raise Exception("表格存在异常")
                 cell.fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
-        path = path.replace(f"2024年{last_month}月第{last_week}周", f"2024年{month}月第{week}周")
-        return ws, path
+        return ws
+
+    @staticmethod
+    def gain_breakpoint(path):
+        """读取断点数据，获取已经爬取的客户名称"""
+        df = pd.read_excel(path, header=None)
+        if df.iloc[3, 0].strftime("%Y/%m/%d") != datetime.now().strftime("%Y/%m/%d"):
+            print("无断点数据，从头开始抓取")
+            return
+        df = df.iloc[2:]
+        df = df[df[4] == "傅镔滢"]
+        df = df.iloc[:, [5, 12, 16, 17, 18]]
+        df = df.fillna("")
+        df[12] = df[12].astype(str)
+        df[16] = df[16].astype(str)
+        df[17] = df[17].astype(str)
+        df[18] = df[18].astype(str)
+        df = df.groupby(5).agg({12: 'sum', 16: 'sum', 17: 'sum', 18: 'sum'})
+        df = df.where(df != "", np.nan)
+        df = df.dropna(subset=[12, 16, 17, 18], how="all")
+        rd = df.index.to_list()
+        print(f"检测到断点,进行断点续查。已抓取数据:{rd}")
+        return rd
 
     def write_to_excel(self, all_data: Dict[str, ClientData]):
         """将数据写入excel表格"""
@@ -214,28 +220,6 @@ class INCAWebSelf(INCAWeb):
             save_data.sales[standard].append(amount)
 
 
-def gain_breakpoint(path):
-    """读取断点数据，获取已经爬取的客户名称"""
-    df = pd.read_excel(path, header=None)
-    if df.iloc[3, 0].strftime("%Y/%m/%d") != datetime.now().strftime("%Y/%m/%d"):
-        print("无断点数据，从头开始抓取")
-        return
-    df = df.iloc[2:]
-    df = df[df[4] == "傅镔滢"]
-    df = df.iloc[:, [5, 12, 16, 17, 18]]
-    df = df.fillna("")
-    df[12] = df[12].astype(str)
-    df[16] = df[16].astype(str)
-    df[17] = df[17].astype(str)
-    df[18] = df[18].astype(str)
-    df = df.groupby(5).agg({12: 'sum', 16: 'sum', 17: 'sum', 18: 'sum'})
-    df = df.where(df != "", np.nan)
-    df = df.dropna(subset=[12, 16, 17, 18], how="all")
-    rd = df.index.to_list()
-    print(f"检测到断点,进行断点续查。已抓取数据:{rd}")
-    return rd
-
-
 def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code,
                      week_interval) -> Dict[str, ClientData]:
     """从网站上爬取数据"""
@@ -259,7 +243,10 @@ def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_
     rd = collections.defaultdict(ClientData)
     print("计算开始时间")
     start_date = datetime.now()
-    start_date = start_date - timedelta(days=start_date.weekday() + 7 * (week_interval - 1))
+    if week_interval == 4:
+        start_date = start_date.replace(day=1)
+    else:
+        start_date = start_date - timedelta(days=start_date.weekday() + 7 * (week_interval - 1))
     start_date_str = start_date.strftime("%Y-%m-%d")
     if len(websites_no_code) != 0:
         print("抓取无验证码的网站数据")
@@ -298,14 +285,13 @@ GOL = GolbalData()
 def main(chrome_path, chromedriver_path, websites_path, save_path, database_path, week_interval):
     print("获取数据库")
     GOL.gain_database(database_path)
-    print("读取断点数据")
-    breakpoint_names = gain_breakpoint(save_path)
+    print("定义数据写入类")
+    writer = DataToExcel(save_path)
     print("针对网站数据进行分类")
-    websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
+    websites_by_code, websites_no_code = analyze_website(websites_path, writer.breakpoint)
     print("从网站上爬取数据")
     crawler_data = crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code, week_interval)
-    print("定义数据写入类")
-    writer = DataToExcel(save_path, interval=week_interval)
+
     print("将数据写入到excel表格中")
     writer.write_to_excel(crawler_data)
     writer.save()
@@ -318,6 +304,6 @@ if __name__ == "__main__":
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
-    set_save_path = r"E:\NewFolder\dabin\中药控股成药营销中心一级商业2024年5月第3周周进销存报表（福建）.xlsx"
+    set_save_path = r"E:\NewFolder\dabin\data.xlsx"
     set_week_interval = 1  # 间隔的查询周数
     main(set_chrome_path, set_chromedriver_path, set_websites_path, set_save_path, set_database_path, set_week_interval)
