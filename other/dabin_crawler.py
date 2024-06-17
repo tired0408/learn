@@ -185,7 +185,8 @@ class DruggcWebSelf(DruggcWeb):
 
     def get_datas(self, user, password, district_name, start_date_str, save_data: WeekData):
         self.login(user, password, district_name)
-        for product_name, inventory, code in self.get_inventory():
+        inventory_data = self.get_inventory()
+        for product_name, inventory, code in inventory_data:
             standard = GOL.get_standard(product_name)
             if standard is None:
                 continue

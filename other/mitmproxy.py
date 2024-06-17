@@ -74,7 +74,7 @@ class CaptchaSocketClient:
             try:
                 self.sock.sendall(value.encode())
                 break
-            except ConnectionResetError as e:
+            except (ConnectionResetError, ConnectionAbortedError) as e:
                 print(f"Connection was reset:{e}")
                 self.reconnect()
                 continue

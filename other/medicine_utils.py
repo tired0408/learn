@@ -492,10 +492,23 @@ class DruggcWeb:
         def deal_inventory(elements: List[WebElement]):
             product_name = elements[0].text + elements[2].text
             product_name = product_name.replace(" ", "")
-            amount = int(elements[7].text)
+            amount = int(elements[-2].text)
             code = str(elements[4].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_inventory, "库存明细")
+        # 处理网站的BUG，会存在数据重复
+        data_dict = {}
+        for name, amount, code in rd:
+            if name not in data_dict:
+                data_dict[name] = {"amount": amount, "code": {code}}
+                continue
+            data_dict[name]["amount"] = amount
+            data_dict[name]["code"].add(code)
+        rd = []
+        for key, value in data_dict.items():
+            if "-" in value["code"]:
+                value["code"].remove("-")
+            rd.append([key, value["amount"], "、".join(list(value["code"]))])
         print(f"[片仔癀宏仁医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
