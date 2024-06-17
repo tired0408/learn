@@ -23,7 +23,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from typing import Dict, List
 from datetime import timedelta, date, datetime
 from openpyxl import load_workbook
-from openpyxl.utils.cell import get_column_letter
+from openpyxl.utils.cell import get_column_letter, column_index_from_string
 warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
 
 
@@ -148,45 +148,19 @@ class GetOperateDetail:
     def read_general_business(self):
         """读取综合营业统计表的相关数据"""
         data = pd.read_excel(GOL.save_path.synthesize_operate, header=None)
-        change_i = 0
-        assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 11] == "渠道营业构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 23] == "饿了么外卖", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 24] == "营业收入（元）", "表格发生变化，请联系管理员"
-        ele_me_i = 25
-        assert data.iloc[2, 42] == "营业收入构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 42] == "现金", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 42] == "人民币", "表格发生变化，请联系管理员"
-        cach_i = 43
-        assert data.iloc[3, 43] == "扫码支付", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 43] == "微信", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 44] == "支付宝", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 45] == "银联二维码（信用卡）", "表格发生变化，请联系管理员"
-        # 2024年3月份的表格与2024年1月份的表格存在不同之处
-        if data.iloc[4, 46] == "卡余额消费-储值余额":
-            eat_in_i_list = [44, 45, 46]
-        elif data.iloc[4, 46] == "银联二维码（储蓄卡）":
-            eat_in_i_list = [44, 45, 46, 47]
-            change_i += 1
-        else:
-            raise Exception("表格发生变化，请联系管理员")
-        assert data.iloc[3, 47 + change_i] == "自定义记账", "表格发生变化，请联系管理员"
-        if data.iloc[4, 47 + change_i] == "公关/奖品/活动/无实质性收入（自）":
-            pubilc_relation_income_i = 47 + change_i + 1
-        elif data.iloc[4, 47 + change_i] == "微信收款（店长号收款）（自）":
-            pubilc_relation_income_i = None
-            change_i -= 1
-        else:
-            raise Exception("表格发生变化，请联系管理员")
-        assert data.iloc[4, 48 + change_i] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
-        wechat_i = 48 + change_i + 1
-        assert data.iloc[2, 51 + change_i] == "支付优惠构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 52 + change_i] == "外卖", "表格发生变化，请联系管理员"
-        assert data.iloc[4, 52 + change_i] == "饿了么外卖", "表格发生变化，请联系管理员"
-        ele_me_free_i = 52 + change_i + 1
-        assert data.iloc[2].dropna().iloc[-1] == "折扣优惠构成", "表格发生变化，请联系管理员"
-        assert data.iloc[3, -1] == "小计", "表格发生变化，请联系管理员"
-        other_free_i = -1
+        row2 = data.iloc[2]
+        row3 = data.iloc[3]
+        row4 = data.iloc[4]
+        ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）")  # 25
+        cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币")  # 46
+        eat_in_i_list = get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)  # 47, 48, 49, 50
+        eat_in_i_list = list(range(eat_in_i_list[0], eat_in_i_list[1]))
+        pubilc_relation_income_i = get_3row_index(row2, row3, row4, "营业收入构成", "自定义记账", "公关/奖品/活动/无实质性收入（自）")  # None
+        wechat_i = get_3row_index(row2, row3, row4, "营业收入构成", "自定义记账", "微信收款（店长号收款）（自）")  # 47
+        if wechat_i is None:
+            wechat_i = get_3row_index(row2, row3, row4, "营业收入构成", "自定义记账", "店长微信收款收入（自）")
+        ele_me_free_i = get_3row_index(row2, row3, row4, "支付优惠构成", "外卖", "饿了么外卖")  # 56
+        other_free_i = get_3row_index(row2, row3, row4, "折扣优惠构成", "小计", "小计")  # 68
         for row in data.iloc[5:].itertuples():
             day_str = row[1]
             if day_str == "合计":
@@ -194,44 +168,29 @@ class GetOperateDetail:
             day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.save_data[day_str]
-            day_data.cash = row[cach_i]
-            day_data.wechat = row[wechat_i]
-            day_data.eat_in = sum([row[i] for i in eat_in_i_list])
-            day_data.ele_me = row[ele_me_i]
-            day_data.ele_me_free = row[ele_me_free_i]
-            day_data.other_free = row[other_free_i]
-            day_data.pubilc_relation_income = 0 if pubilc_relation_income_i is None else row[pubilc_relation_income_i]
+            day_data.cash = row[cach_i + 1]
+            day_data.wechat = row[wechat_i + 1]
+            day_data.eat_in = sum([row[i + 1] for i in eat_in_i_list])
+            day_data.ele_me = row[ele_me_i + 1]
+            day_data.ele_me_free = row[ele_me_free_i + 1]
+            day_data.other_free = row[other_free_i + 1]
+            if pubilc_relation_income_i is None:
+                day_data.pubilc_relation_income = 0
+            else:
+                day_data.pubilc_relation_income = row[pubilc_relation_income_i + 1]
 
     def read_general_collection(self):
         """读取综合收款统计表的相关数据"""
         data = pd.read_excel(GOL.save_path.synthesize_income, header=None)
-        change_i = 0
-        assert data.iloc[2, 0] == "营业日期", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 1] == "业务大类", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 2] == "业务小类", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 4] == "现金", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 4] == "人民币", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 5] == "扫码支付", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 5] == "微信", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 6] == "支付宝", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 7] == "银联二维码（信用卡）", "表格发生变化，请联系管理员"
-        if data.iloc[3, 8] == "卡余额消费-储值余额":
-            scan_i_list = [6, 7, 8]
-        elif data.iloc[3, 8] == "银联二维码（储蓄卡）":
-            scan_i_list = [6, 7, 8, 9]
-            change_i += 1
-        else:
-            raise Exception("表格发生变化，请联系管理员")
-        assert data.iloc[2, 9 + change_i] == "自定义记账", "表格发生变化，请联系管理员"
-        if data.iloc[3, 9 + change_i] == "公关/奖品/活动/无实质性收入（自）":
-            income_i = 9 + change_i + 1
-        elif data.iloc[3, 9 + change_i] == "微信收款（店长号收款）（自）":
-            income_i = None
-            change_i -= 1
-        else:
-            raise Exception("表格发生变化，请联系管理员")
-        assert data.iloc[3, 10 + change_i] == "微信收款（店长号收款）（自）", "表格发生变化，请联系管理员"
-        wechat_i = 10 + change_i + 1
+        row2 = data.iloc[2]
+        row3 = data.iloc[3]
+        cash_i = get_2row_index(row2, row3, "现金", "人民币")
+        scan_i_list = get_2row_index(row2, row3, "扫码支付", None)
+        scan_i_list = list(range(scan_i_list[0], scan_i_list[1]))
+        income_i = get_2row_index(row2, row3, "自定义记账", "公关/奖品/活动/无实质性收入（自）")
+        wechat_i = get_2row_index(row2, row3, "自定义记账", "微信收款（店长号收款）（自）")
+        if wechat_i is None:
+            wechat_i = get_2row_index(row2, row3, "自定义记账", "店长微信收款收入（自）")
         for row in data.iloc[5:].itertuples():
             day_str = row[1]
             if day_str == "合计":
@@ -242,21 +201,21 @@ class GetOperateDetail:
             if row[2] != "会员充值":
                 continue
             if row[3] in ["充值", "撤销充值"]:
-                cash = row[5]
-                wechat = row[wechat_i]
-                scan = row[6] + row[7]
-                scan = sum([row[i] for i in scan_i_list])
-                income = 0 if income_i is None else row[income_i]
+                cash = row[cash_i + 1]
+                wechat = row[wechat_i + 1]
+                scan = sum([row[i + 1] for i in scan_i_list])
+                income = 0 if income_i is None else row[income_i + 1]
             elif row[3] == "退卡":
-                cash = -row[5]
+                cash = -row[cash_i + 1]
                 assert cash <= 0, "退卡金额应该小于0"
-                wechat = -row[wechat_i]
+                wechat = -row[wechat_i + 1]
                 assert wechat <= 0, "退卡金额应该小于0"
                 scan = 0
                 for i in scan_i_list:
+                    i = i + 1
                     assert row[i] >= 0, "退卡金额应该小于0"
                     scan -= row[i]
-                income = 0 if income_i is None else -row[income_i]
+                income = 0 if income_i is None else -row[income_i + 1]
                 assert income <= 0, "退卡金额应该小于0"
             else:
                 continue
@@ -381,7 +340,9 @@ class DadaCrawler(WebCrawler):
         WebDriverWait(self._driver, 10).until(EC.visibility_of(load_icon))
         WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(load_icon))
         # 申请报表下载
-        btn_str = "//div[text()='Still bread 还是面包厨房（华瑞花园1期店）']/../..//span[text()='下载门店订单明细']"
+        btn_str = "//div[text()='Still Bread（湖明店）']/../..//span[text()='下载门店订单明细']"
+        # btn_str = "//div[text()='Still bread 还是面包厨房（华瑞花园1期店）']/../..//span[text()='下载门店订单明细']"
+        # btn_str = "//div[text()='Still sweet']/../..//span[text()='下载门店订单明细']"
         self._driver.find_element(By.XPATH, btn_str).click()
         condition = EC.visibility_of_element_located((By.CLASS_NAME, "modal-content"))
         modal = WebDriverWait(self._driver, 10).until(condition)
@@ -943,9 +904,9 @@ class DaDaAutotrophy:
         autotrophy = [header]
         anomaly = [header]
         for row in ws.iter_rows(min_row=2, values_only=True):
-            order_source = row[order_source_i]
+            order_source = row[order_source_i + 1]
             order_status = row[order_status_i]
-            if "自营外卖" not in order_source:
+            if order_source is None or "自营外卖" not in order_source:
                 continue
             if order_status == '已完成':
                 autotrophy.append(list(row))
@@ -1132,9 +1093,52 @@ class TalkOutData:
         ws.cell(row_i, 8, business_freight)  # 商户承担运费
 
 
-def init_chrome(path, download_path, user_path):
-    service = Service(path)
+def get_3row_index(row1: pd.Series, row2: pd.Series, row3: pd.Series, name1, name2, name3):
+    """获取3行标题中某个数据的索引"""
+    row1_drop = row1.dropna()
+    row1_values = list(row1_drop.values)
+    row1_indexs = [*list(row1_drop.index), len(row1)]
+    n1_i = row1_values.index(name1)
+    n1_s, n1_e = row1_indexs[n1_i], row1_indexs[n1_i + 1]
+    row2_drop = row2.iloc[n1_s:n1_e].dropna()
+    row2_values = list(row2_drop.values)
+    row2_indexs = [*list(row2_drop.index), len(row2)]
+    n2_i = row2_values.index(name2)
+    n2_s, n2_e = row2_indexs[n2_i], row2_indexs[n2_i + 1]
+    if name3 is None:
+        return n2_s, n2_e
+    if name2 == name3:
+        return n2_s
+    row3_drop = row3.iloc[n2_s:n2_e]
+    row3_values = list(row3_drop.values)
+    row3_indexs = list(row3_drop.index)
+    if name3 not in row3_values:
+        return None
+    return row3_indexs[row3_values.index(name3)]
+
+
+def get_2row_index(row1: pd.Series, row2: pd.Series, name1, name2):
+    "获取两行标题的某个数据的索引"
+    row1_drop = row1.dropna()
+    row1_values = list(row1_drop.values)
+    row1_indexs = [*list(row1_drop.index), len(row1)]
+    n1_i = row1_values.index(name1)
+    n1_s, n1_e = row1_indexs[n1_i], row1_indexs[n1_i + 1]
+    if name2 is None:
+        return n1_s, n1_e
+    row2_drop = row2.iloc[n1_s:n1_e].dropna()
+    row2_values = list(row2_drop.values)
+    row2_indexs = list(row2_drop.index)
+    if name2 not in row2_values:
+        return None
+    return row2_indexs[row2_values.index(name2)]
+
+
+def init_chrome(path, driver_path, download_path, user_path):
+    service = Service(driver_path)
     options = Options()
+    if path is not None:
+        options.binary_location = path
     options.add_argument('--log-level=3')
     options.add_argument(f'user-data-dir={user_path}')
     options.add_experimental_option('prefs', {
@@ -1144,10 +1148,10 @@ def init_chrome(path, download_path, user_path):
     return chrome_driver
 
 
-def crawler_main(chrome_path, download_path, user_path):
+def crawler_main(chrome_path, driver_path, download_path, user_path):
     """网站抓取的主方法"""
     print("启动浏览器，开始爬虫抓取")
-    with init_chrome(chrome_path, download_path, user_path) as driver:
+    with init_chrome(chrome_path, driver_path, download_path, user_path) as driver:
         try:
             meituan = MeiTuanCrawler(driver, download_path)
             print("登录并打开美团网站")
@@ -1251,9 +1255,10 @@ def take_out_main():
 
 def main():
     """主方法"""
-    operate_detail_template = r"E:\NewFolder\xiayun\营业明细表模板.xlsx"
+    operate_detail_template = r"E:\NewFolder\xiayun\输入数据\营业明细表模板.xlsx"
     user_path = r'C:\Users\Administrator\AppData\Local\Google\Chrome\User Data'
-    chrome_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    chrome_driver_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
+    chrome_path = r"E:\NewFolder\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe"
     download_path = r"D:\Download"
     # 定义保存名称
     save_folder = os.path.dirname(operate_detail_template)
@@ -1268,9 +1273,9 @@ def main():
     GOL.save_path.eleme_bill = os.path.join(save_folder, f"账单明细{date_str}.xlsx")
     GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"自营外卖{date_str}(美团后台).xlsx")
     GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"自营外卖{date_str}(达达).xlsx")
-    # 从美团网站上下载相关EXCEL文件
-    crawler_main(chrome_path, download_path, user_path):
-        # 汇总营业明细表
+    # 从网站上下载相关EXCEL文件
+    # crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
+    # 汇总营业明细表
     operation_detail_main(operate_detail_template)
     # 饿了么导出数据的处理
     eleme_main()

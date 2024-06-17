@@ -7,12 +7,11 @@ import traceback
 import collections
 import pandas as pd
 import numpy as np
-from tqdm import tqdm
 from typing import Dict, List
 from datetime import datetime, timedelta
 from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.styles import PatternFill
-from openpyxl.utils.cell import column_index_from_string
+from openpyxl.utils.cell import get_column_letter
 from medicine_utils import init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
 
 
@@ -41,8 +40,8 @@ class GolbalData:
         return self.database[name]
 
 
-class ClientData:
-    """每个客户的数据类"""
+class WeekData:
+    """每个客户周数据类"""
 
     def __init__(self) -> None:
         self.purchase = collections.defaultdict(list)  # 本周进货
@@ -51,14 +50,23 @@ class ClientData:
         self.sales = collections.defaultdict(list)  # 本周销量
 
 
+class MonthData:
+    """每个客户的月数据类"""
+
+    def __init__(self) -> None:
+        self.purchase = collections.defaultdict(list)  # 本月进货
+        self.sales = collections.defaultdict(list)  # 本月销货
+        self.code = collections.defaultdict(list)  # 批号
+
+
 class DataToExcel:
     """读取xlsx文件,并修改里面的数值"""
 
-    def __init__(self, path) -> None:
+    def __init__(self, path, interval) -> None:
         self.path = path
         self.wb = openpyxl.load_workbook(path)
         self.ws = self.init_ws()
-        self.breakpoint = self.gain_breakpoint(path)
+        self.breakpoint = self.gain_breakpoint(path, "本月销货" if interval == 4 else "本周库存")
 
     def __del__(self):
         self.wb.close()
@@ -79,69 +87,66 @@ class DataToExcel:
         return ws
 
     @staticmethod
-    def gain_breakpoint(path):
-        """读取断点数据，获取已经爬取的客户名称"""
-        df = pd.read_excel(path, header=None)
-        if df.iloc[3, 0].strftime("%Y/%m/%d") != datetime.now().strftime("%Y/%m/%d"):
+    def gain_breakpoint(path, name):
+        """读取周数据的断点，获取已经爬取的客户名称"""
+        df = pd.read_excel(path, header=1)
+        titles = list(df.columns)
+        if df.iloc[0, titles.index("统计日期")].strftime("%Y/%m/%d") != datetime.now().strftime("%Y/%m/%d"):
             print("无断点数据，从头开始抓取")
             return
-        df = df.iloc[2:]
-        df = df[df[4] == "傅镔滢"]
-        df = df.iloc[:, [5, 12, 16, 17, 18]]
-        df = df.fillna("")
-        df[12] = df[12].astype(str)
-        df[16] = df[16].astype(str)
-        df[17] = df[17].astype(str)
-        df[18] = df[18].astype(str)
-        df = df.groupby(5).agg({12: 'sum', 16: 'sum', 17: 'sum', 18: 'sum'})
-        df = df.where(df != "", np.nan)
-        df = df.dropna(subset=[12, 16, 17, 18], how="all")
+        df = df[df.iloc[:, titles.index("负责人")] == "傅镔滢"]
+        df = df.iloc[:, [titles.index("经销商业公司名称"), titles.index(name)]]
+        df = df.groupby("经销商业公司名称").agg({"本周库存": "sum"})
+        df = df.where(df != 0, np.nan)
+        df = df.dropna()
         rd = df.index.to_list()
         print(f"检测到断点,进行断点续查。已抓取数据:{rd}")
         return rd
 
-    def write_to_excel(self, all_data: Dict[str, ClientData]):
-        """将数据写入excel表格"""
+    def write_week_data(self, all_data: Dict[str, WeekData]):
+        """将周数据写入excel表格"""
         now_date = datetime.now()
-        for row_i in tqdm(range(3, self.ws.max_row + 1)):
-            name = self.ws.cell(row_i, column_index_from_string("G")).value
-            person = self.ws.cell(row_i, column_index_from_string("E")).value
-            company = self.ws.cell(row_i, column_index_from_string("F")).value
-            # 写入数据
-            statistics_date = self.ws.cell(row_i, column_index_from_string("A"))
-            if statistics_date.value.strftime("%Y/%m/%d") != now_date.strftime("%Y/%m/%d"):
-                statistics_date.value = now_date  # 统计日期
-                last_inventory = self.ws.cell(row_i, column_index_from_string("Q")).value
-                self.ws.cell(row_i, column_index_from_string("L"), last_inventory)  # 上周库存
-            if person == "傅镔滢" and company in all_data:
-                data = all_data[company]
-                this_purchase = int(np.sum(list(data.purchase[name])))
-                self.ws.cell(row_i, column_index_from_string("M"), this_purchase)
-                this_inventory = int(np.sum(list(data.inventory[name])))
-                self.ws.cell(row_i, column_index_from_string("Q"), this_inventory)
-                this_code = "、".join(list(data.code[name])) if name in data.code else ""
-                self.ws.cell(row_i, column_index_from_string("R"), this_code)
-                this_worn = self.judge_worn(row_i, int(np.sum(list(data.sales[name]))))
-                self.ws.cell(row_i, column_index_from_string("S"), this_worn)
-            else:
-                self.ws.cell(row_i, column_index_from_string("M"), "")  # 本周进货
-                self.ws.cell(row_i, column_index_from_string("Q"), "")  # 本周库存
-                self.ws.cell(row_i, column_index_from_string("R"), "")  # 批号
-                self.ws.cell(row_i, column_index_from_string("S"), "")  # 备注（记录破损情况）
-
-    def judge_worn(self, row_index, actual_sale):
-        """判断是否有破损"""
-        theory_sale = self.ws[f"L{row_index}"].value + self.ws[f"M{row_index}"].value + \
-            self.ws[f"N{row_index}"].value - self.ws[f"P{row_index}"].value - self.ws[f"Q{row_index}"].value
-        if theory_sale != actual_sale:
-            return theory_sale - actual_sale
-        else:
-            return ""
+        titles = [value for row in self.ws.iter_rows(min_row=2, max_row=2, values_only=True) for value in row]
+        name_i = titles.index("产品名称、规格")
+        person_i = titles.index("负责人")
+        company_i = titles.index("经销商业公司名称")
+        date_i = titles.index("统计日期")
+        last_inventory_i = titles.index("上周库存")
+        purchase_i = titles.index("本周进货")
+        now_inventory_i = titles.index("本周库存")
+        code_i = titles.index("批号")
+        remark_i = titles.index("备注")
+        for row in self.ws.iter_rows(min_row=3):
+            name: Cell = row[name_i]
+            person: Cell = row[person_i]
+            company: Cell = row[company_i]
+            date: Cell = row[date_i]
+            last_inventory: Cell = row[last_inventory_i]
+            purchase: Cell = row[purchase_i]
+            now_inventory: Cell = row[now_inventory_i]
+            code: Cell = row[code_i]
+            remark: Cell = row[remark_i]
+            # 将数据初始化
+            if date.value.strftime("%Y/%m/%d") != now_date.strftime("%Y/%m/%d"):
+                date.value = now_date
+                last_inventory.value = now_inventory.value  # 上周库存
+                purchase.value = ""  # 本周进货
+                now_inventory.value = ""  # 本周库存
+                code.value = ""  # 批号
+                remark.value = ""  # 备注(记录破损情况)
+            # 填写网站数据
+            if person.value == "傅镔滢" and company.value in all_data:
+                data = all_data[company.value]
+                purchase.value = int(np.sum(list(data.purchase[name.value])))
+                now_inventory.value = int(np.sum(list(data.inventory[name.value])))
+                code.value = "、".join(list(data.code[name.value])) if name.value in data.code else ""
+                sell_index = f"{get_column_letter(titles.index('本周销货') + 1)}{name.row}"
+                remark.value = f"=({sell_index}-{int(np.sum(list(data.sales[name.value])))})"
 
 
 class SPFJWebSelf(SPFJWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: WeekData):
         """获取所需数据"""
         self.login(user, password, district_name)
         for product_name, purchase, sale, inventory in self.purchase_sale_stock(start_date_str):
@@ -160,7 +165,7 @@ class SPFJWebSelf(SPFJWeb):
 
 class LYWebSelf(LYWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: WeekData):
         self.login(user, password, district_name)
         for product_name, _, code in self.get_inventory():
             standard = GOL.get_standard(product_name)
@@ -178,7 +183,7 @@ class LYWebSelf(LYWeb):
 
 class DruggcWebSelf(DruggcWeb):
 
-    def get_datas(self, user, password, district_name, start_date_str, save_data: ClientData):
+    def get_datas(self, user, password, district_name, start_date_str, save_data: WeekData):
         self.login(user, password, district_name)
         for product_name, inventory, code in self.get_inventory():
             standard = GOL.get_standard(product_name)
@@ -200,7 +205,7 @@ class DruggcWebSelf(DruggcWeb):
 
 class INCAWebSelf(INCAWeb):
 
-    def get_datas(self, user, password, start_date_str, save_data: ClientData):
+    def get_datas(self, user, password, start_date_str, save_data: WeekData):
         self.login(user, password)
         for product_name, inventory, code in self.get_inventory():
             standard = GOL.get_standard(product_name)
@@ -221,7 +226,7 @@ class INCAWebSelf(INCAWeb):
 
 
 def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code,
-                     week_interval) -> Dict[str, ClientData]:
+                     week_interval) -> Dict[str, WeekData]:
     """从网站上爬取数据"""
     def crawler_general(datas: List[dict], url2method):
         for data in datas:
@@ -240,7 +245,7 @@ def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_
                 rd.pop(client_name)
                 return True
         return False
-    rd = collections.defaultdict(ClientData)
+    rd = collections.defaultdict(WeekData)
     print("计算开始时间")
     start_date = datetime.now()
     if week_interval == 4:
@@ -286,14 +291,13 @@ def main(chrome_path, chromedriver_path, websites_path, save_path, database_path
     print("获取数据库")
     GOL.gain_database(database_path)
     print("定义数据写入类")
-    writer = DataToExcel(save_path)
+    writer = DataToExcel(save_path, week_interval)
     print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, writer.breakpoint)
     print("从网站上爬取数据")
     crawler_data = crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code, week_interval)
-
     print("将数据写入到excel表格中")
-    writer.write_to_excel(crawler_data)
+    writer.write_week_data(crawler_data)
     writer.save()
     print("程序运行已完成")
 
