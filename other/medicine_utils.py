@@ -5,12 +5,13 @@ import re
 import os
 import time
 import socket
+import traceback
 import threading
 import pandas as pd
 from typing import List
 from queue import Queue
 from datetime import datetime
-from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException, StaleElementReferenceException
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -471,21 +472,25 @@ class DruggcWeb:
         clear_and_send(self.driver.find_element(By.ID, "password"), password)
         Select(self.driver.find_element(By.ID, "entryid")).select_by_visible_text(district_name)
         while True:
-            captcha = self.captcha.recv()
-            print(f"输入验证码:{captcha}")
-            if len(captcha) != 4:
+            try:
+                captcha = self.captcha.recv()
+                print(f"输入验证码:{captcha}")
+                if len(captcha) != 4:
+                    self.driver.find_element(By.ID, "captchaImg").click()
+                    continue
+                clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
+                self.driver.find_element(By.ID, "login").click()
+                c1 = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
+                c2 = EC.visibility_of_element_located((By.ID, "side-menu"))
+                ele = WebDriverWait(self.driver, 5).until(EC.any_of(c1, c2))
+                print(f"[片仔癀宏仁医药]等待的元素ID:{ele.get_attribute('id')}")
+                if ele.get_attribute("id") == "side-menu":
+                    break
+                print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
                 self.driver.find_element(By.ID, "captchaImg").click()
-                continue
-            clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
-            self.driver.find_element(By.ID, "login").click()
-            c1 = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
-            c2 = EC.visibility_of_element_located((By.ID, "side-menu"))
-            ele = WebDriverWait(self.driver, 5).until(EC.any_of(c1, c2))
-            print(f"[片仔癀宏仁医药]等待的元素ID:{ele.get_attribute('id')}")
-            if ele.get_attribute("id") == "side-menu":
-                break
-            print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
-            self.driver.find_element(By.ID, "captchaImg").click()
+            except Exception:
+                print(traceback.format_exc())
+                print(1111111111111111111111111111111)
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "side-menu")))
         print(f"[片仔癀宏仁医药]{user}用户已登录")
 
@@ -510,6 +515,7 @@ class DruggcWeb:
             amount = int(row["数量"])
             code = str(row["批号"])
             rd.append([product_name, amount, code])
+        os.remove(file_path)
         print(f"[片仔癀宏仁医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -574,7 +580,6 @@ class DruggcWeb:
 
 def wait_download(download_path, name):
     """等待开始下载"""
-    download_path = r"D:\Download"
     st = time.time()
     while True:
         if (time.time() - st) > 300:

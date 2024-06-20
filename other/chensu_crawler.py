@@ -151,8 +151,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
                 print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
                 print(traceback.format_exc())
                 print("-" * 150)
-                print("去除该客户的全部数据")
-                crawler_data.pop(client_name)
+                if client_name in crawler_data:
+                    print("去除该客户的全部数据")
+                    crawler_data.pop(client_name)
                 return True
         return False
 
