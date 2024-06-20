@@ -2,6 +2,7 @@
 医药网站抓取的通用方法
 """
 import re
+import os
 import time
 import socket
 import threading
@@ -19,7 +20,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
 
-def init_chrome(chromedriver_path, chrome_path=None, is_proxy=True):
+def init_chrome(chromedriver_path, download_path, chrome_path=None, is_proxy=True):
     """初始化浏览器"""
     service = Service(chromedriver_path)
     options = Options()
@@ -29,6 +30,9 @@ def init_chrome(chromedriver_path, chrome_path=None, is_proxy=True):
         options.add_argument('--proxy-server=127.0.0.1:8080')
         options.add_argument('ignore-certificate-errors')
     options.add_argument('--log-level=3')
+    options.add_experimental_option('prefs', {
+        "download.default_directory": download_path,  # 指定下载目录
+    })
     driver = Chrome(service=service, options=options)
     return driver
 
@@ -456,7 +460,8 @@ class DruggcWeb:
     """片仔癀宏仁医药有限公司网站的数据抓取"""
     url = r"http://117.29.176.58:8860/drugqc/home/login?type=flowLogin"
 
-    def __init__(self, driver, captcha) -> None:
+    def __init__(self, driver, captcha, download_path) -> None:
+        self.path = download_path
         self.driver: Chrome = driver
         self.captcha: CaptchaSocketServer = captcha
 
@@ -489,26 +494,22 @@ class DruggcWeb:
         获取库存数据
         :return: [(商品名称, 库存数量, 批号), ...]
         """
-        def deal_inventory(elements: List[WebElement]):
-            product_name = elements[0].text + elements[2].text
-            product_name = product_name.replace(" ", "")
-            amount = int(elements[-2].text)
-            code = str(elements[4].text)
-            return [product_name, amount, code]
-        rd = self.get_table_data(deal_inventory, "库存明细")
-        # 处理网站的BUG，会存在数据重复
-        data_dict = {}
-        for name, amount, code in rd:
-            if name not in data_dict:
-                data_dict[name] = {"amount": amount, "code": {code}}
-                continue
-            data_dict[name]["amount"] = amount
-            data_dict[name]["code"].add(code)
+        self.driver.switch_to.default_content()
+        self.driver.find_element(By.XPATH, "//span[text()='库存明细']").click()
+        self.driver.switch_to.frame(self.driver.find_element(By.ID, "mainframe"))
+        condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
+        WebDriverWait(self.driver, 60).until_not(condition)
+        button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
+        button.click()
+        file_name = wait_download(self.path, f"库存明细{datetime.now().strftime('%Y%m%d%H')}")
+        file_path = os.path.join(self.path, file_name)
+        data = pd.read_excel(file_path, header=1)
         rd = []
-        for key, value in data_dict.items():
-            if "-" in value["code"]:
-                value["code"].remove("-")
-            rd.append([key, value["amount"], "、".join(list(value["code"]))])
+        for _, row in data.iterrows():
+            product_name = row["通用名"] + row["规格"]
+            amount = int(row["数量"])
+            code = str(row["批号"])
+            rd.append([product_name, amount, code])
         print(f"[片仔癀宏仁医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -569,3 +570,18 @@ class DruggcWeb:
                 break
             page_info.find_element(By.XPATH, "//li[contains(@class, 'page-next')]/a").click()
         return rd
+
+
+def wait_download(download_path, name):
+    """等待开始下载"""
+    download_path = r"D:\Download"
+    st = time.time()
+    while True:
+        if (time.time() - st) > 300:
+            raise Exception("Waiting download timeout.")
+        files = os.listdir(download_path)
+        for file_name in files:
+            if re.match(f"^{name}" + r".*\.xlsx$", file_name) is not None:
+                return file_name
+        else:
+            continue

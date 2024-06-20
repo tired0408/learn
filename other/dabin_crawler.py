@@ -226,7 +226,7 @@ class INCAWebSelf(INCAWeb):
             save_data.sales[standard].append(amount)
 
 
-def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code,
+def crawler_from_web(chrome_path, chromedriver_path, download_path, websites_by_code, websites_no_code,
                      week_interval) -> Dict[str, WeekData]:
     """从网站上爬取数据"""
     def crawler_general(datas: List[dict], url2method):
@@ -256,7 +256,7 @@ def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_
     start_date_str = start_date.strftime("%Y-%m-%d")
     if len(websites_no_code) != 0:
         print("抓取无验证码的网站数据")
-        driver = init_chrome(chromedriver_path, chrome_path=chrome_path, is_proxy=False)
+        driver = init_chrome(chromedriver_path, download_path, chrome_path=chrome_path, is_proxy=False)
         spfj = SPFJWebSelf(driver)
         inca = INCAWebSelf(driver)
         luyan = LYWebSelf(driver)
@@ -273,8 +273,8 @@ def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_
     if len(websites_by_code) != 0:
         print("抓取有验证码的网站数据")
         sock = CaptchaSocketServer()
-        driver = init_chrome(chromedriver_path, chrome_path=chrome_path)
-        druggc = DruggcWebSelf(driver, sock)
+        driver = init_chrome(chromedriver_path, download_path, chrome_path=chrome_path)
+        druggc = DruggcWebSelf(driver, sock, download_path)
         url_condition = {
             druggc.url: druggc.get_datas
         }
@@ -288,7 +288,7 @@ def crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_
 GOL = GolbalData()
 
 
-def main(chrome_path, chromedriver_path, websites_path, save_path, database_path, week_interval):
+def main(chrome_path, chromedriver_path, download_path, websites_path, save_path, database_path, week_interval):
     print("获取数据库")
     GOL.gain_database(database_path)
     print("定义数据写入类")
@@ -296,7 +296,8 @@ def main(chrome_path, chromedriver_path, websites_path, save_path, database_path
     print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, writer.breakpoint)
     print("从网站上爬取数据")
-    crawler_data = crawler_from_web(chrome_path, chromedriver_path, websites_by_code, websites_no_code, week_interval)
+    crawler_data = crawler_from_web(chrome_path, chromedriver_path, download_path,
+                                    websites_by_code, websites_no_code, week_interval)
     print("将数据写入到excel表格中")
     writer.write_week_data(crawler_data)
     writer.save()
@@ -306,9 +307,11 @@ def main(chrome_path, chromedriver_path, websites_path, save_path, database_path
 if __name__ == "__main__":
     set_chromedriver_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
     set_chrome_path = r"E:\NewFolder\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe"
+    set_download_path = r"D:\Download"
 
     set_websites_path = r"E:\NewFolder\dabin\福建商业明细表(福建)22.2.10-主席.xlsx"
     set_database_path = r"E:\NewFolder\dabin\产品库-傅镔滢.xlsx"
     set_save_path = r"E:\NewFolder\dabin\data.xlsx"
     set_week_interval = 1  # 间隔的查询周数
-    main(set_chrome_path, set_chromedriver_path, set_websites_path, set_save_path, set_database_path, set_week_interval)
+    main(set_chrome_path, set_chromedriver_path, set_download_path,
+         set_websites_path, set_save_path, set_database_path, set_week_interval)

@@ -125,7 +125,8 @@ def read_breakpoint(path) -> Tuple[set, pd.DataFrame]:
     return client_names, datas
 
 
-def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[dict], chrome_path, chromedriver_path):
+def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[dict], chrome_path,
+                          chromedriver_path, download_path):
 
     def crawler_general(datas: List[dict], url2method):
         """抓取的通用方法"""
@@ -157,7 +158,7 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
 
     crawler_data = collections.defaultdict(lambda: collections.defaultdict(list))
     print("抓取无验证码的网站数据")
-    driver = init_chrome(chromedriver_path, chrome_path=chrome_path, is_proxy=False)
+    driver = init_chrome(chromedriver_path, download_path, chrome_path=chrome_path, is_proxy=False)
     spfj = SPFJWeb(driver)
     inca = INCAWeb(driver)
     luyan = LYWeb(driver)
@@ -173,9 +174,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     driver.quit()
     print("抓取有验证码的网站数据")
     sock = CaptchaSocketServer()
-    driver = init_chrome(chromedriver_path, chrome_path=chrome_path)
+    driver = init_chrome(chromedriver_path, download_path, chrome_path=chrome_path)
     tc = TCWeb(driver, sock)
-    druggc = DruggcWeb(driver, sock)
+    druggc = DruggcWeb(driver, sock, download_path)
     url_condition = {
         tc.url: [tc.login, tc.get_inventory, [0, 1]],
         druggc.url: [druggc.login, druggc.get_inventory, [0, 1]]
@@ -186,13 +187,14 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
     return crawler_data
 
 
-def main(websites_path, chrome_path, chromedriver_path, save_path, database_path):
+def main(websites_path, chrome_path, chromedriver_path, download_path, save_path, database_path):
     print("读取断点数据")
     breakpoint_names, breakpoint_datas = read_breakpoint(save_path)
     print("针对网站数据进行分类")
     websites_by_code, websites_no_code = analyze_website(websites_path, breakpoint_names)
     print("从网站上爬取所需数据")
-    crawler_data = crawler_websites_data(websites_by_code, websites_no_code, chrome_path, chromedriver_path)
+    crawler_data = crawler_websites_data(websites_by_code, websites_no_code,
+                                         chrome_path, chromedriver_path, download_path)
     print("开始写入所有数据")
     writer = DataToExcel(save_path, database_path)
     writer.data.update(crawler_data)
@@ -211,8 +213,9 @@ if __name__ == "__main__":
     user_folder = opt["path"]
     set_chrome_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe")
     set_chromedriver_path = os.path.join(user_folder, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
+
     set_websites_path = os.path.join(user_folder, "库存网查明细.xlsx")
     set_database_path = os.path.join(user_folder, "脚本产品库.xlsx")
     now_day = datetime.date.today().strftime('%Y%m%d')
     set_save_path = os.path.join(user_folder, f"库存导入{now_day}.xls")
-    main(set_websites_path, set_chrome_path, set_chromedriver_path, set_save_path, set_database_path)
+    main(set_websites_path, set_chrome_path, set_chromedriver_path, user_folder, set_save_path, set_database_path)

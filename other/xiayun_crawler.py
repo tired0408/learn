@@ -1274,7 +1274,7 @@ def main():
     GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"自营外卖{date_str}(美团后台).xlsx")
     GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"自营外卖{date_str}(达达).xlsx")
     # 从网站上下载相关EXCEL文件
-    # crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
+    crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
     # 汇总营业明细表
     operation_detail_main(operate_detail_template)
     # 饿了么导出数据的处理
