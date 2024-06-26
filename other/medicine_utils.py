@@ -5,13 +5,14 @@ import re
 import os
 import time
 import socket
+import warnings
 import traceback
 import threading
 import pandas as pd
 from typing import List
 from queue import Queue
 from datetime import datetime
-from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException, StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, UnexpectedAlertPresentException, TimeoutException
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -19,6 +20,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
+
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def init_chrome(chromedriver_path, download_path, chrome_path=None, is_proxy=True):
@@ -93,8 +97,8 @@ def analyze_website(path, ignore_names):
         }
         if not pd.isna(row.iloc[1]):
             data["district_name"] = correct_str(row.iloc[1])
-        if ignore_names is not None and data["client_name"] in ignore_names:
-            print(f"断点之前已查询过:{data['client_name']},{data['user']}")
+        if data["client_name"] in ignore_names:
+            print(f"忽视的客户名称:{data['client_name']},{data['user']}")
             continue
         if code_condition[data["website_url"]]:
             websites_by_code.append(data)
@@ -166,7 +170,7 @@ class SPFJWeb:
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "butn")))
         print(f"[国控福建]{user}用户已登录")
 
-    def purchase_sale_stock(self, start_date=None):
+    def purchase_sale_stock(self, start_date=None, end_date=None):
         """
         进销存数据抓取
         :return: [(商品名称, 进货数量, 销售数量, 库存数量), ...]
@@ -178,7 +182,7 @@ class SPFJWeb:
             sales = int(elements[5].text)
             inventory = int(elements[7].text)
             return [product_name, purchase, sales, inventory]
-        rd = self.get_table_data(deal_func, "进销存汇总", start_date)
+        rd = self.get_table_data(deal_func, "进销存汇总", start_date=start_date, end_date=end_date)
         print(f"[国控福建]进销存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -197,14 +201,17 @@ class SPFJWeb:
         print(f"[国控福建]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def get_table_data(self, deal_func, table_type, start_date=None):
+    def get_table_data(self, deal_func, table_type, start_date=None, end_date=None):
         """获取表格数据的通用方法"""
         Select(self.driver.find_element(By.ID, "type")).select_by_visible_text(table_type)
         if start_date is not None:
-            start_element = self.driver.find_element(By.ID, "txtBeginDate")
-            self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
+            element = self.driver.find_element(By.ID, "txtBeginDate")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+        if end_date is not None:
+            element = self.driver.find_element(By.ID, "txtEndDate")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, end_date)
         self.driver.find_element(By.ID, "butn").click()
-        WebDriverWait(self.driver, 30).until_not(EC.visibility_of_element_located((By.ID, "loading")))
+        WebDriverWait(self.driver, 60).until_not(EC.visibility_of_element_located((By.ID, "loading")))
         rd = []
         try:
             values = self.driver.find_element(By.ID, "customers")
@@ -264,36 +271,32 @@ class INCAWeb:
             product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
-        rd = self.get_table_data(deal_func, "供应商网络服务", "进货明细查询", start_date, self.time_set)
+        rd = self.get_table_data(deal_func, "供应商网络服务", "进货明细查询", start_date)
         print(f"[片仔癀漳州]进货数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def get_sales(self, start_date=None):
+    def get_sales(self, start_date=None, end_date=None):
+        """
+        获取发货数据
+        return: [(商品名称, 发货数量), ...]
+        """
         def deal_func(elements: List[WebElement]):
             product_name = elements[2].text + elements[3].text
             product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
-        rd = self.get_table_data(deal_func, "客户网络服务", "发货明细查询", start_date, self.time_set)
+        rd = self.get_table_data(deal_func, "客户网络服务", "发货明细查询", start_date=start_date, end_date=end_date)
         print(f"[片仔癀漳州]销售数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def time_set(self, start_date):
-        """时间设置"""
-        self.driver.find_element(By.ID, "but_b").click()
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "but_con")))
-        self.driver.find_element(By.ID, "but_con").click()
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
-        self.driver.find_element(By.XPATH, "//input[@value='shijian']").click()
-        start_element = self.driver.find_element(By.NAME, "startdate")
-        self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
-        end_element = self.driver.find_element(By.NAME, "enddate")
-        end_date = datetime.now().strftime("%Y-%m-%d")
-        self.driver.execute_script("arguments[0].value = arguments[1]", end_element, end_date)
-        self.driver.find_element(By.XPATH, "//div[contains(@class, 'modal-footer')]/input[@value='查询']").click()
-
-    def get_table_data(self, deal_func, tree_type, table_type, start_date=None, time_func=None):
-        """获取表格数据"""
+    def get_table_data(self, deal_func, tree_type, table_type, start_date=None, end_date=None):
+        """获取表格数据
+        :param deal_func: (function); 表格的处理方法
+        :param tree_type: (str); 树形菜单栏的名称
+        :param table_type: (str); 表格的名称
+        :param start_date: (str); 开始日期,格式:"%Y-%m-%d"
+        :param end_date: (str); 结束日期
+        """
         self.driver.switch_to.default_content()
         try:
             xpath = f"//span[text()='{tree_type}']/preceding-sibling::div[contains(@class, 'l-expandable-close')]"
@@ -307,10 +310,21 @@ class INCAWeb:
         iframe_id = self.driver.find_element(By.XPATH, f"//a[text()='{table_type}']/parent::*")
         iframe_id = iframe_id.get_attribute("tabid")
         self.driver.switch_to.frame(self.driver.find_element(By.ID, iframe_id))
-        if start_date is None:
+        if start_date is None and end_date is None:
             self.driver.find_element(By.ID, "submit_s").click()
         else:
-            time_func(start_date)
+            self.driver.find_element(By.ID, "but_b").click()
+            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "but_con")))
+            self.driver.find_element(By.ID, "but_con").click()
+            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+            self.driver.find_element(By.XPATH, "//input[@value='shijian']").click()
+            start_element = self.driver.find_element(By.NAME, "startdate")
+            self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
+            end_element = self.driver.find_element(By.NAME, "enddate")
+            if end_date is None:
+                end_date = datetime.now().strftime("%Y-%m-%d")
+            self.driver.execute_script("arguments[0].value = arguments[1]", end_element, end_date)
+            self.driver.find_element(By.XPATH, "//div[contains(@class, 'modal-footer')]/input[@value='查询']").click()
         # 获取表格
         WebDriverWait(self.driver, 30).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "l-tab-loading")))
         rd = []
@@ -365,7 +379,7 @@ class LYWeb:
         print(f"[鹭燕]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def purchase_sale_stock(self, start_date):
+    def purchase_sale_stock(self, start_date=None, end_date=None):
         """
         进销存汇总数据抓取
         :return: [(商品名称, 进货数量, 销售数量, 库存数量), ...]
@@ -377,11 +391,11 @@ class LYWeb:
             sales = int(float(elements[3].text))
             inventory = int(float(elements[5].text))
             return [product_name, purchase, sales, inventory]
-        rd = self.get_table_data(deal_func, "进销存汇总表", start_date)
+        rd = self.get_table_data(deal_func, "进销存汇总表", start_date, end_date)
         print(f"[鹭燕]进销存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def get_table_data(self, deal_func, table_type, start_date=None):
+    def get_table_data(self, deal_func, table_type, start_date=None, end_date=None):
         """获取表格数据"""
         self.driver.switch_to.default_content()
         self.driver.switch_to.frame(self.driver.find_element(By.NAME, "menu"))
@@ -389,8 +403,11 @@ class LYWeb:
         self.driver.switch_to.default_content()
         self.driver.switch_to.frame(self.driver.find_element(By.NAME, "main"))
         if start_date is not None:
-            start_element = self.driver.find_element(By.NAME, "StartDate")
-            self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
+            element = self.driver.find_element(By.NAME, "StartDate")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+        if end_date is not None:
+            element = self.driver.find_element(By.NAME, "EndDate")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, end_date)
         try:
             self.driver.find_element(By.XPATH, "//input[@value='开始查询']").click()
         except NoSuchElementException:
@@ -452,8 +469,38 @@ class TCWeb:
                 inventory = int(each_v[6].text)
                 rd.append([product_name, inventory])
         except NoSuchElementException:
-            pass
+            print("[同春医药]无库存数据")
         print(f"[同春医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
+        return rd
+
+    def get_product_flow(self, start_date, end_date):
+        """
+        获取商品流向数据
+        :return: [(商品名称, 进货数量, 销售数量), ...]
+        """
+        element = WebDriverWait(self.driver, 60).until(EC.visibility_of_element_located((By.NAME, "time1")))
+        self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+        element = WebDriverWait(self.driver, 60).until(EC.visibility_of_element_located((By.NAME, "time2")))
+        self.driver.execute_script("arguments[0].value = arguments[1]", element, end_date)
+        btn = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "btnSearch")))
+        btn.click()
+        condition = EC.visibility_of_element_located((By.XPATH, "//strong[text()='商品流向列表']"))
+        element = WebDriverWait(self.driver, 60).until(condition)
+        table = element.find_element(By.XPATH, "./ancestor::*[4]/following-sibling::table")
+        rd = []
+        try:
+            values = table.find_elements(By.TAG_NAME, "tr")
+            for tr_ele in values[1:]:
+                td_list = tr_ele.find_elements(By.TAG_NAME, "td")
+                if td_list[0].text == "":
+                    break
+                product_name = td_list[3].text + td_list[4].text
+                sales = td_list[7].text
+                sales = 0 if sales == "" else int(sales)
+                rd.append([product_name, sales])
+        except NoSuchElementException:
+            print("[同春医药]无流向数据")
+        print(f"[同春医药]流向数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
 
@@ -477,9 +524,11 @@ class DruggcWeb:
                 print(f"输入验证码:{captcha}")
                 if len(captcha) != 4:
                     self.driver.find_element(By.ID, "captchaImg").click()
+                    time.sleep(0.1)
                     continue
                 clear_and_send(self.driver.find_element(By.ID, "captcha"), captcha)
-                self.driver.find_element(By.ID, "login").click()
+                button = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "login")))
+                button.click()
                 c1 = EC.visibility_of_element_located((By.XPATH, "//div[text()='验证码不正确！']"))
                 c2 = EC.visibility_of_element_located((By.ID, "side-menu"))
                 ele = WebDriverWait(self.driver, 5).until(EC.any_of(c1, c2))
@@ -488,6 +537,7 @@ class DruggcWeb:
                     break
                 print("[片仔癀宏仁医药]验证码识别错误，更换验证码图片")
                 self.driver.find_element(By.ID, "captchaImg").click()
+                WebDriverWait(self.driver, 60).until_not(c1)
             except Exception:
                 print(traceback.format_exc())
                 print(1111111111111111111111111111111)
