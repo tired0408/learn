@@ -163,7 +163,7 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
         for product_name, amount, _ in super().get_inventory():
             id = GOL.get_id(client_name, product_name)
-            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
                 amount = amount * 2
             rd[id]["本期库存*"] += amount
         return rd
@@ -175,6 +175,8 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         for product_name, amount in super().get_sales(start_date, end_date):
             id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
+                amount = amount * 2
             rd[id]["近3个月月均销量"] += amount
         return calculate_turnover(rd)
 
@@ -196,6 +198,8 @@ class LYWebCustom(LYWeb, WebAbstract):
         start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
         for product_name, _, sales, _ in super().purchase_sale_stock(start_date):
             id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
         return calculate_turnover(rd)
 
@@ -218,6 +222,8 @@ class TCWebCustom(TCWeb, WebAbstract):
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         for product_name, sales in super().get_product_flow(start_date, end_date):
             id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
         return calculate_turnover(rd)
 

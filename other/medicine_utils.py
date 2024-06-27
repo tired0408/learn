@@ -253,8 +253,6 @@ class INCAWeb:
             product_name = elements[1].text + elements[2].text
             product_name = product_name.replace(" ", "")
             amount = int(elements[5].text)
-            if "胰岛素" in product_name:
-                amount = amount * 2
             code = str(elements[6].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_func, "供应商网络服务", "库存明细查询")
