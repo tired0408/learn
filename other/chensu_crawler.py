@@ -5,6 +5,7 @@ XLS属于较老版本,需使用xlwt数据库
 """
 import os
 import abc
+import copy
 import xlwt
 import datetime
 import traceback
@@ -100,24 +101,52 @@ class DataToExcel:
             save_data.update(breakpoint_data)
         # 写入数据
         print("开始写入数据")
+        color_style = {
+            "red": self.get_color_style("red"),
+            "orange": self.get_color_style("orange"),
+            "green": self.get_color_style("green"),
+        }
         now_date = datetime.datetime.today()
         date_style = xlwt.XFStyle()
         date_style.num_format_str = 'YYYY/MM/DD'
         for row_i, row in enumerate(save_data.values()):
             row_i += 1
+
+            self.ws.write(row_i, 3, now_date, date_style)
+            self.ws.write(row_i, 4, now_date, date_style)
+            if "库存周转天数" in row:
+                day = row.pop("库存周转天数")
+                if day > 45:
+                    self.ws.write(row_i, GOL.title.index("库存周转天数"), day)
+                else:
+                    if day <= 15:
+                        color = color_style["red"]
+                    elif day <= 30:
+                        color = color_style["orange"]
+                    else:
+                        color = color_style["green"]
+                    self.ws.write(row_i, GOL.title.index("库存周转天数"), day, color)
+
             for key, value in row.items():
                 col_i = GOL.title.index(key)
                 self.ws.write(row_i, col_i, label=value)
                 GOL.widths[col_i] = max(GOL.widths[col_i], self.len_byte(value))
 
-            self.ws.write(row_i, 3, now_date, date_style)
-            self.ws.write(row_i, 4, now_date, date_style)
         # 修改格式
         print("开始修改格式")
         for i, width in enumerate(GOL.widths):
             self.ws.col(i).width = width * 256
         self.save()
         print("所有数据已全部写入完成")
+
+    def get_color_style(self, color):
+        """获取颜色样式"""
+        style = xlwt.XFStyle()
+        pattern = xlwt.Pattern()
+        pattern.pattern = xlwt.Pattern.SOLID_PATTERN
+        pattern.pattern_fore_colour = xlwt.Style.colour_map[color]
+        style.pattern = pattern
+        return style
 
 
 class WebAbstract(abc.ABC):
@@ -151,7 +180,8 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
-        for product_name, _, sales, _ in super().purchase_sale_stock(start_date, end_date):
+        datas = super().purchase_sale_stock(start_date, end_date)
+        for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
             rd[id]["近3个月月均销量"] += sales
         return calculate_turnover(rd)
@@ -161,7 +191,8 @@ class INCAWebCustom(INCAWeb, WebAbstract):
 
     def export_inventory(self, client_name) -> dict:
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
-        for product_name, amount, _ in super().get_inventory():
+        inventory_list = super().get_inventory()
+        for product_name, amount, _ in inventory_list:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
                 amount = amount * 2
@@ -173,7 +204,8 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
-        for product_name, amount in super().get_sales(start_date, end_date):
+        sales_list = super().get_sales(start_date, end_date)
+        for product_name, amount in sales_list:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
                 amount = amount * 2
@@ -185,7 +217,8 @@ class LYWebCustom(LYWeb, WebAbstract):
 
     def export_inventory(self, client_name) -> dict:
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
-        for product_name, amount, _ in super().get_inventory():
+        inventory_list = super().get_inventory()
+        for product_name, amount, _ in inventory_list:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 amount = amount * 2
@@ -196,7 +229,8 @@ class LYWebCustom(LYWeb, WebAbstract):
         rd: dict = self.export_inventory(client_name)
         now_date = datetime.datetime.now()
         start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
-        for product_name, _, sales, _ in super().purchase_sale_stock(start_date):
+        datas = super().purchase_sale_stock(start_date)
+        for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 sales = sales * 2
@@ -208,7 +242,8 @@ class TCWebCustom(TCWeb, WebAbstract):
 
     def export_inventory(self, client_name) -> dict:
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
-        for product_name, amount in super().get_inventory():
+        inventory_list = super().get_inventory()
+        for product_name, amount in inventory_list:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 amount = amount * 2
@@ -220,7 +255,8 @@ class TCWebCustom(TCWeb, WebAbstract):
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
-        for product_name, sales in super().get_product_flow(start_date, end_date):
+        datas = super().get_product_flow(start_date, end_date)
+        for product_name, sales in datas:
             id = GOL.get_id(client_name, product_name)
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 sales = sales * 2
@@ -232,7 +268,8 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
 
     def export_inventory(self, client_name):
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
-        for product_name, amount, _ in super().get_inventory():
+        inventory_list = super().get_inventory()
+        for product_name, amount, _ in inventory_list:
             id = GOL.get_id(client_name, product_name)
             if "复方α-酮酸片" in product_name and "本期库存*" in GOL.data[id]:
                 GOL.data[id]["本期库存*"] += amount
@@ -321,7 +358,8 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
             print(traceback.format_exc())
             print("去除该客户的全部数据")
-            for key in GOL.data.keys():
+            data_key = copy.deepcopy(GOL.data.keys())
+            for key in data_key:
                 if client_name not in key:
                     continue
                 GOL.data.pop(key)
