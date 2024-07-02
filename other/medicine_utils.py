@@ -228,7 +228,8 @@ class INCAWeb:
     """片仔癀漳州医药有限公司的数据抓取"""
     url = r"http://59.59.56.90:8094/ns/"
 
-    def __init__(self, driver) -> None:
+    def __init__(self, driver, download_path) -> None:
+        self.path = download_path
         self.driver: Chrome = driver
 
     def login(self, user, password):
@@ -278,13 +279,22 @@ class INCAWeb:
         获取发货数据
         return: [(商品名称, 发货数量), ...]
         """
-        def deal_func(elements: List[WebElement]):
-            product_name = elements[2].text + elements[3].text
+        self.show_table_data("客户网络服务", "发货明细查询", start_date=start_date, end_date=end_date)
+        button = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "Button1")))
+        button.click()
+        file_name = wait_download(self.path, "发货明细下载")
+        file_path = os.path.join(self.path, file_name)
+        print(f"文件下载已完成:{file_path}")
+        time.sleep(1)
+        data = pd.read_excel(file_path, header=0)
+        rd = []
+        for _, row in data.iterrows():
+            product_name: str = row["商品名称"] + row["规格"]
             product_name = product_name.replace(" ", "")
-            amount = int(elements[9].text)
-            return [product_name, amount]
-        rd = self.get_table_data(deal_func, "客户网络服务", "发货明细查询", start_date=start_date, end_date=end_date)
+            amount = int(row["数量"])
+            rd.append([product_name, amount])
         print(f"[片仔癀漳州]销售数据抓取已完成，共抓取{len(rd)}条数据")
+        os.remove(file_path)
         return rd
 
     def get_table_data(self, deal_func, tree_type, table_type, start_date=None, end_date=None):
@@ -295,6 +305,29 @@ class INCAWeb:
         :param start_date: (str); 开始日期,格式:"%Y-%m-%d"
         :param end_date: (str); 结束日期
         """
+        self.show_table_data(tree_type, table_type, start_date=start_date, end_date=end_date)
+        rd = []
+        try:
+            while True:
+                content = self.driver.find_element(By.CLASS_NAME, "bill_m")
+                tabel = content.find_elements(By.CLASS_NAME, 'formsT_No_table')[1]
+                values = tabel.find_elements(By.TAG_NAME, "tr")
+                for each_v in values[1:]:
+                    each_v = each_v.find_elements(By.TAG_NAME, "td")
+                    rd.append(deal_func(each_v))
+                pages = content.find_element(By.CLASS_NAME, "pages")
+                page_info = pages.find_element(By.CLASS_NAME, "page_m").text
+                index, total_index = page_info.split("/")
+                if index == total_index:
+                    break
+                next_page = pages.find_element(By.CLASS_NAME, "next")
+                next_page.click()
+        except NoSuchElementException:
+            pass
+        return rd
+
+    def show_table_data(self, tree_type, table_type, start_date=None, end_date=None):
+        """显示表格数据"""
         self.driver.switch_to.default_content()
         try:
             xpath = f"//span[text()='{tree_type}']/preceding-sibling::div[contains(@class, 'l-expandable-close')]"
@@ -323,27 +356,7 @@ class INCAWeb:
                 end_date = datetime.now().strftime("%Y-%m-%d")
             self.driver.execute_script("arguments[0].value = arguments[1]", end_element, end_date)
             self.driver.find_element(By.XPATH, "//div[contains(@class, 'modal-footer')]/input[@value='查询']").click()
-        # 获取表格
         WebDriverWait(self.driver, 30).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "l-tab-loading")))
-        rd = []
-        try:
-            while True:
-                content = self.driver.find_element(By.CLASS_NAME, "bill_m")
-                tabel = content.find_elements(By.CLASS_NAME, 'formsT_No_table')[1]
-                values = tabel.find_elements(By.TAG_NAME, "tr")
-                for each_v in values[1:]:
-                    each_v = each_v.find_elements(By.TAG_NAME, "td")
-                    rd.append(deal_func(each_v))
-                pages = content.find_element(By.CLASS_NAME, "pages")
-                page_info = pages.find_element(By.CLASS_NAME, "page_m").text
-                index, total_index = page_info.split("/")
-                if index == total_index:
-                    break
-                next_page = pages.find_element(By.CLASS_NAME, "next")
-                next_page.click()
-        except NoSuchElementException:
-            pass
-        return rd
 
 
 class LYWeb:
@@ -556,10 +569,13 @@ class DruggcWeb:
         button.click()
         file_name = wait_download(self.path, f"库存明细{datetime.now().strftime('%Y%m%d%H')}")
         file_path = os.path.join(self.path, file_name)
+        print(f"文件下载已完成:{file_path}")
+        time.sleep(1)
         data = pd.read_excel(file_path, header=1)
         rd = []
         for _, row in data.iterrows():
-            product_name = row["通用名"] + row["规格"]
+            product_name: str = row["通用名"] + row["规格"]
+            product_name = product_name.replace(" ", "")
             amount = int(row["数量"])
             code = str(row["批号"])
             rd.append([product_name, amount, code])
