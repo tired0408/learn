@@ -118,6 +118,8 @@ class DataToExcel:
                 day = row.pop("库存周转天数")
                 if day > 45:
                     self.ws.write(row_i, GOL.title.index("库存周转天数"), day)
+                elif day < 0:
+                    self.ws.write(row_i, GOL.title.index("库存周转天数"), '动销缓慢')
                 else:
                     if day <= 15:
                         color = color_style["red"]
@@ -285,9 +287,10 @@ def calculate_turnover(data: dict):
     """计算周转天数"""
     for value in data.values():
         value["近3个月月均销量"] = round(value["近3个月月均销量"] / 3)
-        if value["近3个月月均销量"] == 0:
-            continue
-        value["库存周转天数"] = round(value["本期库存*"] / value["近3个月月均销量"] * 30)
+        if value["近3个月月均销量"] != 0:
+            value["库存周转天数"] = round(value["本期库存*"] / value["近3个月月均销量"] * 30)
+        elif value["本期库存*"] > 0:
+            value["库存周转天数"] = -1
     return data
 
 
