@@ -358,7 +358,7 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
             print(traceback.format_exc())
             print("去除该客户的全部数据")
-            data_key = copy.deepcopy(GOL.data.keys())
+            data_key = copy.deepcopy(list(GOL.data.keys()))
             for key in data_key:
                 if client_name not in key:
                     continue
@@ -420,5 +420,4 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--deliver", action="store_true", help="是否导出发货分析表，默认库存导入表")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
-    opt["deliver"] = True
     main(opt["path"], opt["deliver"])
