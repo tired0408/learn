@@ -371,8 +371,12 @@ class LYWeb:
         clear_and_send(self.driver.find_element(By.NAME, "username"), user)
         clear_and_send(self.driver.find_element(By.NAME, "loginpwd"), password)
         Select(self.driver.find_element(By.NAME, "select")).select_by_visible_text(district_name)
-        self.driver.find_element(By.CLASS_NAME, "buttonsubmit").click()
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.NAME, "menu")))
+        c1 = EC.element_to_be_clickable((By.CLASS_NAME, "buttonsubmit"))
+        btn = WebDriverWait(self.driver, 60).until(c1)
+        btn.click()
+        c1 = EC.visibility_of_element_located((By.CLASS_NAME, "buttonsubmit"))
+        WebDriverWait(self.driver, 60).until_not(c1)
+        WebDriverWait(self.driver, 60).until(EC.title_is("鹭燕医药网上查询系统"))
         print(f"[鹭燕]{user}用户已登录")
 
     def get_inventory(self):

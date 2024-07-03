@@ -163,7 +163,7 @@ class WebAbstract(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def export_deliver(self, client_name) -> dict:
+    def export_deliver(self, client_name, user) -> dict:
         """获取发货明细"""
         pass
 
@@ -177,7 +177,7 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
             rd[id]["本期库存*"] += amount
         return rd
 
-    def export_deliver(self, client_name) -> dict:
+    def export_deliver(self, client_name, user) -> dict:
         rd: dict = self.export_inventory(client_name)
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
@@ -186,6 +186,7 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
             rd[id]["近3个月月均销量"] += sales
+            rd[id]["备注"] = user
         return calculate_turnover(rd)
 
 
@@ -201,7 +202,7 @@ class INCAWebCustom(INCAWeb, WebAbstract):
             rd[id]["本期库存*"] += amount
         return rd
 
-    def export_deliver(self, client_name) -> dict:
+    def export_deliver(self, client_name, user) -> dict:
         rd: dict = self.export_inventory(client_name)
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
@@ -212,6 +213,7 @@ class INCAWebCustom(INCAWeb, WebAbstract):
             if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
                 amount = amount * 2
             rd[id]["近3个月月均销量"] += amount
+            rd[id]["备注"] = user
         return calculate_turnover(rd)
 
 
@@ -227,7 +229,7 @@ class LYWebCustom(LYWeb, WebAbstract):
             rd[id]["本期库存*"] += amount
         return rd
 
-    def export_deliver(self, client_name) -> dict:
+    def export_deliver(self, client_name, user) -> dict:
         rd: dict = self.export_inventory(client_name)
         now_date = datetime.datetime.now()
         start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
@@ -237,6 +239,7 @@ class LYWebCustom(LYWeb, WebAbstract):
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
+            rd[id]["备注"] = user
         return calculate_turnover(rd)
 
 
@@ -252,7 +255,7 @@ class TCWebCustom(TCWeb, WebAbstract):
             rd[id]["本期库存*"] += amount
         return rd
 
-    def export_deliver(self, client_name) -> dict:
+    def export_deliver(self, client_name, user) -> dict:
         rd: dict = self.export_inventory(client_name)
         now_date = datetime.datetime.now()
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
@@ -263,6 +266,7 @@ class TCWebCustom(TCWeb, WebAbstract):
             if "外用红色诺卡氏菌细胞壁骨架" in product_name:
                 sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
+            rd[id]["备注"] = user
         return calculate_turnover(rd)
 
 
@@ -320,19 +324,26 @@ def read_breakpoint() -> Tuple[set, dict]:
         print("无断点数据,从头到尾抓取")
         return set(), None
     datas = pd.read_excel(GOL.save_path)
-    client_names = set(datas["一级商业*"].tolist())
-    datas.fillna("", inplace=True)
-    print(f"检测到断点,进行断点续查。已抓取数据:{client_names}")
+    datas["本期库存*"].fillna(0, inplace=True)
+    datas['本期库存*'] = pd.to_numeric(datas['本期库存*'], errors='coerce')
+    datas = datas.groupby("一级商业*")["本期库存*"].sum().reset_index()
+    datas = datas[datas['本期库存*'] != 0]
+    ignore_names = datas["一级商业*"].tolist()
+    print(f"检测到断点,进行断点续查。已抓取数据:{ignore_names}")
     # 整理断点数据
+    datas = pd.read_excel(GOL.save_path)
+    datas.fillna("", inplace=True)
     rd = {}
     for _, row in datas.iterrows():
         client_name = row["一级商业*"]
+        if client_name not in ignore_names:
+            continue
         product_name = row["商品信息*"]
         data = row.to_dict()
         data.pop("库存日期*")
         data.pop("库存获取日期*")
         rd[GOL.get_id(client_name, product_name)] = data
-    return client_names, rd
+    return ignore_names, rd
 
 
 def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
@@ -340,12 +351,13 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
     for data in datas:
         client_name = data.pop("client_name")
         website_url = data.pop("website_url")
+        user = data["user"]
         web_class = url2class[website_url]
         try:
             web_class.login(**data)
             # 不同账号重复商品，只取其中一个账户
             if GOL.is_deliver:
-                this_account = web_class.export_deliver(client_name)
+                this_account = web_class.export_deliver(client_name, user)
             else:
                 this_account = web_class.export_inventory(client_name)
             for key, value in this_account.items():
@@ -373,37 +385,39 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
 
 def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[dict]):
     """从网站上抓取数据，并写入全局变量"""
-    print("抓取无验证码的网站数据")
-    driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
-    url2class: Dict[str, WebAbstract] = {
-        SPFJWeb.url: SPFJWebCustom(driver),
-        INCAWeb.url: INCAWebCustom(driver, GOL.download_path),
-        LYWeb.url: LYWebCustom(driver)
-    }
-    is_error = crawler_general(websites_no_code, url2class)
-    if is_error:
-        return
-    print("关闭浏览器")
-    driver.quit()
-    print("抓取有验证码的网站数据")
-    sock = CaptchaSocketServer()
-    driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
-    url2class: Dict[str, WebAbstract] = {
-        TCWeb.url: TCWebCustom(driver, sock),
-        DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
-    }
-    crawler_general(websites_by_code, url2class)
-    print("关闭浏览器")
-    driver.quit()
+    if len(websites_no_code) != 0:
+        print("抓取无验证码的网站数据")
+        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
+        url2class: Dict[str, WebAbstract] = {
+            SPFJWeb.url: SPFJWebCustom(driver),
+            INCAWeb.url: INCAWebCustom(driver, GOL.download_path),
+            LYWeb.url: LYWebCustom(driver)
+        }
+        is_error = crawler_general(websites_no_code, url2class)
+        if is_error:
+            return
+        print("关闭浏览器")
+        driver.quit()
+    if len(websites_by_code) != 0:
+        print("抓取有验证码的网站数据")
+        sock = CaptchaSocketServer()
+        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
+        url2class: Dict[str, WebAbstract] = {
+            TCWeb.url: TCWebCustom(driver, sock),
+            DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
+        }
+        crawler_general(websites_by_code, url2class)
+        print("关闭浏览器")
+        driver.quit()
 
 
 def main(path, is_deliver):
     print("设置全局数据")
     GOL.set_data(path, is_deliver)
-    print("读取数据库信息")
-    read_production_database()
     print("读取断点数据")
     breakpoint_names, breakpoint_datas = read_breakpoint()
+    print("读取数据库信息")
+    read_production_database()
     print("针对网站数据进行分类")
     if is_deliver:
         breakpoint_names.add("厦门片仔癀宏仁医药有限公司")
