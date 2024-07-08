@@ -174,6 +174,8 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
         for product_name, amount, _ in super().get_inventory():
             id = GOL.get_id(client_name, product_name)
+            if "人胰岛素注射液" in product_name:
+                amount = amount * 2
             rd[id]["本期库存*"] += amount
         return rd
 
@@ -185,6 +187,8 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         datas = super().purchase_sale_stock(start_date, end_date)
         for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
+            if "人胰岛素注射液" in product_name:
+                sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
         return calculate_turnover(rd)
