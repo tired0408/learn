@@ -1,10 +1,14 @@
 import time
+import xlwt
+
 import collections
 import numpy as np
 import pandas as pd
 import xlwings as xw
+from openpyxl import load_workbook
+from openpyxl.styles import PatternFill
 from itertools import combinations
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from difflib import SequenceMatcher
 
 
@@ -26,7 +30,7 @@ def get_database(path):
     """"获取各个终端客户的产品名称转化为标准名称的数据库"""
     rd = {}
     df = pd.read_excel(path, header=1)
-    for row in df.iterrows():
+    for _, row in df.iterrows():
         rd[row["合并项"]] = row["品规(清洗后)"]
     return rd
 
@@ -35,41 +39,57 @@ def get_zgzy_data(path):
     """获取中国中药的数据及客户名称转化为标注名称的数据库"""
     rd: Dict[str, Dict[str, Unit]] = {}
     name2standard: Dict[str, Dict[str, str]] = {}
-    df = pd.read_excel(path, header=0)
-    df = df[["销售日期", "购入客户名称(原始)", "购入客户名称(清洗后)", "品规(清洗后)", "批次", "数量"]]
-    for row in df.iterrows():
+    raw_df = pd.read_excel(path, header=0)
+
+    df = raw_df[["销售日期", "购入客户名称(原始)", "购入客户名称(清洗后)", "品规(清洗后)", "标准批号", "数量"]]
+    for index, row in df.iterrows():
         name = row["购入客户名称(原始)"]
         name_standard = row["购入客户名称(清洗后)"]
-        key = "@@".join([row["销售日期", "品规(清洗后)", "批次"]])
-
+        amount = row["数量"]
+        key = "@@".join([row["销售日期"], row["品规(清洗后)"], row["标准批号"]])
+        if key not in name2standard:
+            name2standard[key] = {}
         name2standard[key][name] = name_standard
 
         if key not in rd:
             rd[key] = {name_standard: Unit()}
-        if key not in rd[key]:
+        if name_standard not in rd[key]:
             rd[key][name_standard] = Unit()
-        rd[key][name_standard].amount.append(row["数量"])
-        rd[key][name_standard].index.append(row.index)
+        rd[key][name_standard].amount.append(amount)
+        rd[key][name_standard].index.append(index)
 
-    return rd, name2standard
+    return_df = raw_df[["销售日期", "购入客户名称(原始)", "品种名称(原始)", "品规(原始)", "标准批号", "数量"]]
+    return_df = return_df.rename(columns={
+        "购入客户名称(原始)": "客户名称",
+        "品种名称(原始)": "商品名称",
+        "品规(原始)": "规格",
+        "标准批号": "批号",
+        "数量": "销售数量"
+    })
+    return_df = return_df.reindex(columns=["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"])
+    return_df["来源"] = ["中国中药表"] * len(return_df)
+    return return_df, rd, name2standard
 
 
-def get_client_data(path, product_database, client_database: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, Unit]]:
+def get_client_data(path, product_database, client_database: Dict[str, Dict[str, str]]) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Unit]]]:
     """整理终端客户的数据"""
     rd: Dict[str, Dict[str, Unit]] = {}
-    df = pd.read_excel(path, header=0)
-    df = df[["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"]]
-    for row in df.iterrows():
+    raw_df = pd.read_excel(path, header=0)
+    df = raw_df[["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"]]
+    for index, row in df.iterrows():
         quality_regulation = row["商品名称"] + row["规格"]
         if quality_regulation not in product_database:
-            print(f"[警告]{quality_regulation}并未在产品库中，请核实")
+            print(f"[警告]产品名称异常, 未在产品库中，请核实:{quality_regulation}")
             continue
         quality_regulation = product_database[quality_regulation]
+        date: pd.Timestamp = row["销售日期"]
 
-        key = "@@".join([row["销售日期", quality_regulation, "批号"]])
+        key = "@@".join([date.strftime("%Y-%m-%d"), quality_regulation, str(row["批号"])])
 
         name_standard = row["客户名称"]
-        if name_standard in client_database[key]:
+        if key not in client_database:
+            print(f"[警告]客户名匹配异常,日期-品类-批号未找到数据，请核实:{key}, {name_standard}")
+        elif name_standard in client_database[key]:
             name_standard = client_database[key][name_standard]
         else:
             similarity_list = []
@@ -78,17 +98,20 @@ def get_client_data(path, product_database, client_database: Dict[str, Dict[str,
                     continue
                 similarity_list.append(name)
             if len(similarity_list) != 1:
-                print(f"[警告]该客户名称未找到匹配项，请核实:{key}, {name_standard}, {similarity_list}")
+                print(f"[警告]客户名匹配异常, 未找到匹配项，请核实:{key}, {name_standard}, {similarity_list}")
             else:
                 name_standard = similarity_list[0]
 
         if key not in rd:
             rd[key] = {name_standard: Unit()}
-        if key not in rd[key]:
+        if name_standard not in rd[key]:
             rd[key][name_standard] = Unit()
-        rd[key][name_standard].amount.append(row["数量"])
-        rd[key][name_standard].index.append(row.index)
-    return rd
+        rd[key][name_standard].amount.append(row["销售数量"])
+        rd[key][name_standard].index.append(index)
+
+    return_df = raw_df.reindex(columns=["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"])
+    return_df["来源"] = ["客户表"] * len(return_df)
+    return return_df, rd
 
 
 def find_combination(nums, target):
@@ -135,14 +158,27 @@ def match_and_diff(list1: List, list2: List):
     return unmatched_list1, unmatched_list2
 
 
+def fill_color(path, indexs):
+    """根据索引填充颜色"""
+    red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
+    wb = load_workbook(path)
+    ws = wb.active
+    for i in indexs:
+        ws.cell(row=i + 2, column=1).fill = red_fill
+    wb.save(path)
+
+
 def main():
-    zgzy_path = r"E:\NewFolder\liuxiang\商业流向明细报表 湖南 22年7月-24年5月-国控岳阳.xlsx"
-    client_path = r"E:\NewFolder\liuxiang\国药控股岳阳有限公司.xls"
+    zgzy_path = r"E:\NewFolder\liuxiang\商业流向明细报表 湖南 22年7月-24年5月-国控岳阳 - 副本.xlsx"
+    client_path = r"E:\NewFolder\liuxiang\国药控股岳阳有限公司 - 副本.xlsx"
     database_path = r"E:\NewFolder\liuxiang\湖南 商业品规清洗桥梁表（使用）.xlsx"
+    print("读取产品库")
     product_database = get_database(database_path)
-    zgzy_dict, client_database = get_zgzy_data(zgzy_path)
-    client_dict = get_client_data(client_path, product_database, client_database)
-    # 比对中国中药及终端客户的数据差异
+    print("读取中国中药数据表")
+    zgzy_df, zgzy_dict, client_database = get_zgzy_data(zgzy_path)
+    print("读取终端客户的数据表")
+    client_df, client_dict = get_client_data(client_path, product_database, client_database)
+    print("开始比对数据，获取差异项")
     zgzy_different = []
     client_different = []
     for client_k1, client_v1 in client_dict.items():
@@ -162,12 +198,18 @@ def main():
             for amount in unmatched_client:
                 client_different.append(client_v2.index[client_v2.amount.index(amount)])
     # 补充中国中药里面的差异数据
-    for k1, v1 in zgzy_dict.items():
-        for k2, v2 in v1.items():
+    for _, v1 in zgzy_dict.items():
+        for _, v2 in v1.items():
             zgzy_different.extend(v2.index)
+    print("针对差异数据,在原始表上进行标红")
+    fill_color(zgzy_path, zgzy_different)
+    fill_color(client_path, client_different)
+    print("输出差异表")
+    zgzy_df_diff = zgzy_df.iloc[zgzy_different]
+    client_df_diff = client_df.iloc[client_different]
+    diff = pd.concat([zgzy_df_diff, client_df_diff])
+    diff.to_excel(r"E:\NewFolder\liuxiang\核查报告.xlsx", index=False)
     print("程序已运行完毕")
-    print(zgzy_different)
-    print(client_different)
 
 
 if __name__ == '__main__':
