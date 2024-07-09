@@ -1,12 +1,8 @@
-import time
 import xlwt
-
-import collections
-import numpy as np
 import pandas as pd
-import xlwings as xw
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
+from xlwt.Worksheet import Worksheet
 from itertools import combinations
 from typing import List, Dict, Tuple
 from difflib import SequenceMatcher
@@ -58,30 +54,25 @@ def get_zgzy_data(path):
         rd[key][name_standard].amount.append(amount)
         rd[key][name_standard].index.append(index)
 
-    return_df = raw_df[["销售日期", "购入客户名称(原始)", "品种名称(原始)", "品规(原始)", "标准批号", "数量"]]
+    return_df = raw_df[["销售日期", "购入客户名称(原始)", "品规(清洗后)", "标准批号", "数量"]]
     return_df = return_df.rename(columns={
         "购入客户名称(原始)": "客户名称",
-        "品种名称(原始)": "商品名称",
-        "品规(原始)": "规格",
         "标准批号": "批号",
         "数量": "销售数量"
     })
-    return_df = return_df.reindex(columns=["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"])
+    return_df = return_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"])
     return_df["来源"] = ["中国中药表"] * len(return_df)
     return return_df, rd, name2standard
 
 
-def get_client_data(path, product_database, client_database: Dict[str, Dict[str, str]]) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Unit]]]:
+def get_client_data(path, client_database: Dict[str, Dict[str, str]]
+                    ) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Unit]]]:
     """整理终端客户的数据"""
     rd: Dict[str, Dict[str, Unit]] = {}
     raw_df = pd.read_excel(path, header=0)
-    df = raw_df[["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"]]
+    df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
     for index, row in df.iterrows():
-        quality_regulation = row["商品名称"] + row["规格"]
-        if quality_regulation not in product_database:
-            print(f"[警告]产品名称异常, 未在产品库中，请核实:{quality_regulation}")
-            continue
-        quality_regulation = product_database[quality_regulation]
+        quality_regulation = row["品规(清洗后)"]
         date: pd.Timestamp = row["销售日期"]
 
         key = "@@".join([date.strftime("%Y-%m-%d"), quality_regulation, str(row["批号"])])
@@ -109,7 +100,7 @@ def get_client_data(path, product_database, client_database: Dict[str, Dict[str,
         rd[key][name_standard].amount.append(row["销售数量"])
         rd[key][name_standard].index.append(index)
 
-    return_df = raw_df.reindex(columns=["销售日期", "客户名称", "商品名称", "规格", "批号", "销售数量"])
+    return_df = raw_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"])
     return_df["来源"] = ["客户表"] * len(return_df)
     return return_df, rd
 
@@ -168,16 +159,23 @@ def fill_color(path, indexs):
     wb.save(path)
 
 
+def get_xlwt_color_style(color):
+    """获取颜色样式"""
+    style = xlwt.XFStyle()
+    pattern = xlwt.Pattern()
+    pattern.pattern = xlwt.Pattern.SOLID_PATTERN
+    pattern.pattern_fore_colour = xlwt.Style.colour_map[color]
+    style.pattern = pattern
+    return style
+
+
 def main():
-    zgzy_path = r"E:\NewFolder\liuxiang\商业流向明细报表 湖南 22年7月-24年5月-国控岳阳 - 副本.xlsx"
-    client_path = r"E:\NewFolder\liuxiang\国药控股岳阳有限公司 - 副本.xlsx"
-    database_path = r"E:\NewFolder\liuxiang\湖南 商业品规清洗桥梁表（使用）.xlsx"
-    print("读取产品库")
-    product_database = get_database(database_path)
+    zgzy_path = r"E:\NewFolder\liuxiang\中国中药表 - 副本.xlsx"
+    client_path = r"E:\NewFolder\liuxiang\客户表 - 副本.xlsx"
     print("读取中国中药数据表")
     zgzy_df, zgzy_dict, client_database = get_zgzy_data(zgzy_path)
     print("读取终端客户的数据表")
-    client_df, client_dict = get_client_data(client_path, product_database, client_database)
+    client_df, client_dict = get_client_data(client_path, client_database)
     print("开始比对数据，获取差异项")
     zgzy_different = []
     client_different = []
@@ -194,9 +192,13 @@ def main():
             zgzy_v2 = zgzy_v1.pop(client_k2)
             unmatched_zgzy, unmatched_client = match_and_diff(zgzy_v2.amount, client_v2.amount)
             for amount in unmatched_zgzy:
-                zgzy_different.append(zgzy_v2.index[zgzy_v2.amount.index(amount)])
+                amount_index = zgzy_v2.amount.index(amount)
+                zgzy_v2.amount.pop(amount_index)
+                zgzy_different.append(zgzy_v2.index.pop(amount_index))
             for amount in unmatched_client:
-                client_different.append(client_v2.index[client_v2.amount.index(amount)])
+                amount_index = client_v2.amount.index(amount)
+                client_v2.amount.pop(amount_index)
+                client_different.append(client_v2.index.pop(amount_index))
     # 补充中国中药里面的差异数据
     for _, v1 in zgzy_dict.items():
         for _, v2 in v1.items():
@@ -205,10 +207,29 @@ def main():
     fill_color(zgzy_path, zgzy_different)
     fill_color(client_path, client_different)
     print("输出差异表")
-    zgzy_df_diff = zgzy_df.iloc[zgzy_different]
-    client_df_diff = client_df.iloc[client_different]
-    diff = pd.concat([zgzy_df_diff, client_df_diff])
-    diff.to_excel(r"E:\NewFolder\liuxiang\核查报告.xlsx", index=False)
+    yellow = get_xlwt_color_style("yellow")
+    orange = get_xlwt_color_style("orange")
+    wb = xlwt.Workbook()
+    ws: Worksheet = wb.add_sheet("Sheet1")
+    for j, value in enumerate(zgzy_df.columns):
+        ws.write(0, j, value)
+    row_i = 0
+    for index, row in zgzy_df.iterrows():
+        row_i += 1
+        for j, value in enumerate(row):
+            if index in zgzy_different:
+                ws.write(row_i, j, value, yellow)
+            else:
+                ws.write(row_i, j, value)
+    client_df["销售日期"] = client_df['销售日期'] = client_df['销售日期'].dt.strftime('%Y-%m-%d')
+    for index, row in client_df.iterrows():
+        row_i += 1
+        for j, value in enumerate(row):
+            if index in client_different:
+                ws.write(row_i, j, value, orange)
+            else:
+                ws.write(row_i, j, value)
+    wb.save(r"E:\NewFolder\liuxiang\核查报告.xls")
     print("程序已运行完毕")
 
 
