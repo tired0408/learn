@@ -19,7 +19,7 @@ class Unit:
 def similarity_match(a, b):
     """定义相似度匹配函数"""
     similarity = SequenceMatcher(None, a, b).ratio()
-    return similarity >= 0.8
+    return similarity
 
 
 def get_database(path):
@@ -42,7 +42,10 @@ def get_zgzy_data(path):
         name = row["购入客户名称(原始)"]
         name_standard = row["购入客户名称(清洗后)"]
         amount = row["数量"]
-        key = "@@".join([row["销售日期"], row["品规(清洗后)"], row["标准批号"]])
+
+        key: str = "@@".join([row["销售日期"], row["品规(清洗后)"], row["标准批号"]])
+        key = key.replace(" ", "")
+
         if key not in name2standard:
             name2standard[key] = {}
         name2standard[key][name] = name_standard
@@ -70,12 +73,14 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
     """整理终端客户的数据"""
     rd: Dict[str, Dict[str, Unit]] = {}
     raw_df = pd.read_excel(path, header=0)
+    raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
     df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
     for index, row in df.iterrows():
         quality_regulation = row["品规(清洗后)"]
         date: pd.Timestamp = row["销售日期"]
 
-        key = "@@".join([date.strftime("%Y-%m-%d"), quality_regulation, str(row["批号"])])
+        key: str = "@@".join([date, quality_regulation, str(row["批号"])])
+        key = key.replace(" ", "")
 
         name_standard = row["客户名称"]
         if key not in client_database:
@@ -83,16 +88,19 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
         elif name_standard in client_database[key]:
             name_standard = client_database[key][name_standard]
         else:
-            similarity_list = []
-            for name in client_database[key].values():
-                if not similarity_match(name, name_standard):
+            similarity_score = 0
+            similarity_name = None
+            name_list = list(client_database[key].values())
+            for name in name_list:
+                score = similarity_match(name, name_standard)
+                if score < 0.8 or score < similarity_score:
                     continue
-                similarity_list.append(name)
-            if len(similarity_list) != 1:
-                print(f"[警告]客户名匹配异常, 未找到匹配项，请核实:{key}, {name_standard}, {similarity_list}")
+                similarity_score = score
+                similarity_name = name
+            if similarity_name is None:
+                print(f"[警告]客户名匹配异常, 未找到匹配项，请核实:{key}, {name_standard}, {name_list}")
             else:
-                name_standard = similarity_list[0]
-
+                name_standard = similarity_name
         if key not in rd:
             rd[key] = {name_standard: Unit()}
         if name_standard not in rd[key]:
@@ -170,8 +178,8 @@ def get_xlwt_color_style(color):
 
 
 def main():
-    zgzy_path = r"E:\NewFolder\liuxiang\中国中药表 - 副本.xlsx"
-    client_path = r"E:\NewFolder\liuxiang\客户表 - 副本.xlsx"
+    zgzy_path = r"E:\NewFolder\liuxiang\中国中药表.xlsx"
+    client_path = r"E:\NewFolder\liuxiang\客户表.xlsx"
     print("读取中国中药数据表")
     zgzy_df, zgzy_dict, client_database = get_zgzy_data(zgzy_path)
     print("读取终端客户的数据表")
@@ -221,7 +229,6 @@ def main():
                 ws.write(row_i, j, value, yellow)
             else:
                 ws.write(row_i, j, value)
-    client_df["销售日期"] = client_df['销售日期'] = client_df['销售日期'].dt.strftime('%Y-%m-%d')
     for index, row in client_df.iterrows():
         row_i += 1
         for j, value in enumerate(row):
