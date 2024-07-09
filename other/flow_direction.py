@@ -1,4 +1,6 @@
 import xlwt
+import datetime
+import collections
 import pandas as pd
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
@@ -43,7 +45,7 @@ def get_zgzy_data(path):
         name_standard = row["购入客户名称(清洗后)"]
         amount = row["数量"]
 
-        key: str = "@@".join([row["销售日期"], row["品规(清洗后)"], row["标准批号"]])
+        key: str = "@@".join([row["销售日期"], row["品规(清洗后)"], str(row["标准批号"])])
         key = key.replace(" ", "")
 
         if key not in name2standard:
@@ -157,13 +159,29 @@ def match_and_diff(list1: List, list2: List):
     return unmatched_list1, unmatched_list2
 
 
-def fill_color(path, indexs):
-    """根据索引填充颜色"""
+def deal_excel(path, indexs):
+    """根据索引填充颜色, 并新增数据"""
     red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
     wb = load_workbook(path)
     ws = wb.active
+    # 填充颜色
     for i in indexs:
         ws.cell(row=i + 2, column=1).fill = red_fill
+    # 新增两列数据：年月，年月+品规
+    month_col = ws.max_column + 1
+    month_quality_col = month_col + 1
+    title = [value for row in ws.iter_rows(min_row=0, max_row=1, values_only=True) for value in row]
+    ws.cell(row=1, column=month_col, value="年月")
+    ws.cell(row=1, column=month_quality_col, value="年月+品规")
+    date_col = title.index("销售日期") + 1
+    quality_col = title.index("品规(清洗后)") + 1
+    for i in range(2, ws.max_row + 1):
+        month_str = ws.cell(row=i, column=date_col).value
+        month_str = month_str.replace(" ", "")
+        month_str = datetime.datetime.strptime(month_str, "%Y-%m-%d").strftime("%Y-%m")
+        quality = ws.cell(row=i, column=quality_col).value
+        ws.cell(row=i, column=month_col, value=month_str)
+        ws.cell(row=i, column=month_quality_col, value=f"{quality}{month_str}")
     wb.save(path)
 
 
@@ -211,9 +229,9 @@ def main():
     for _, v1 in zgzy_dict.items():
         for _, v2 in v1.items():
             zgzy_different.extend(v2.index)
-    print("针对差异数据,在原始表上进行标红")
-    fill_color(zgzy_path, zgzy_different)
-    fill_color(client_path, client_different)
+    print("针对差异数据,在原始表上进行标红,并新增数据")
+    deal_excel(zgzy_path, zgzy_different)
+    deal_excel(client_path, client_different)
     print("输出差异表")
     yellow = get_xlwt_color_style("yellow")
     orange = get_xlwt_color_style("orange")
@@ -236,6 +254,38 @@ def main():
                 ws.write(row_i, j, value, orange)
             else:
                 ws.write(row_i, j, value)
+    # 整理合并表
+    quality_dict = collections.defaultdict(lambda: [0, 0])
+    month_quality_dict = collections.defaultdict(lambda: [0, 0])
+    for i, df in enumerate([zgzy_df, client_df]):
+        for j, row in df.iterrows():
+            name: str = row["品规(清洗后)"]
+            name = name.replace(" ", "")
+            date = row["销售日期"][:7]
+            amount = row["销售数量"]
+            quality_dict[name][i] += amount
+            month_quality_dict[f"{name}{date}"][i] += amount
+    ws: Worksheet = wb.add_sheet("Sheet2")
+    title = ["品规(清洗后)", "系统数量", "商业数量", "差异", "备注"]
+    for j, value in enumerate(title):
+        ws.write(0, j, value)
+    row_i = 0
+    for key, value in quality_dict.items():
+        row_i += 1
+        ws.write(row_i, 0, key)
+        ws.write(row_i, 1, value[0])
+        ws.write(row_i, 2, value[1])
+        ws.write(row_i, 3, value[0] - value[1])
+    title = ["年月+品规", "系统数量", "商业数量", "差异", "备注"]
+    for j, value in enumerate(title):
+        ws.write(0, j + 7, value)
+    row_i = 0
+    for key, value in month_quality_dict.items():
+        row_i += 1
+        ws.write(row_i, 7, key)
+        ws.write(row_i, 8, value[0])
+        ws.write(row_i, 9, value[1])
+        ws.write(row_i, 10, value[0] - value[1])
     wb.save(r"E:\NewFolder\liuxiang\核查报告.xls")
     print("程序已运行完毕")
 
