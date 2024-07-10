@@ -1,10 +1,7 @@
 import xlwt
-import datetime
 import collections
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import PatternFill
-from xlwt.Worksheet import Worksheet
+from xlwt.Worksheet import Worksheet, Style
 from itertools import combinations
 from typing import List, Dict, Tuple
 from difflib import SequenceMatcher
@@ -33,12 +30,12 @@ def get_database(path):
     return rd
 
 
-def get_zgzy_data(path):
+def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str, Unit]], Dict[str, str]]:
     """获取中国中药的数据及客户名称转化为标注名称的数据库"""
     rd: Dict[str, Dict[str, Unit]] = {}
     name2standard: Dict[str, Dict[str, str]] = {}
-    raw_df = pd.read_excel(path, header=0)
 
+    raw_df = pd.read_excel(path, header=0)
     df = raw_df[["销售日期", "购入客户名称(原始)", "购入客户名称(清洗后)", "品规(清洗后)", "标准批号", "数量"]]
     for index, row in df.iterrows():
         name = row["购入客户名称(原始)"]
@@ -65,15 +62,16 @@ def get_zgzy_data(path):
         "标准批号": "批号",
         "数量": "销售数量"
     })
-    return_df = return_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"])
+    return_df = return_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量", "红冲标记原因"])
     return_df["来源"] = ["中国中药表"] * len(return_df)
-    return return_df, rd, name2standard
+    return raw_df, return_df, rd, name2standard
 
 
 def get_client_data(path, client_database: Dict[str, Dict[str, str]]
-                    ) -> Tuple[pd.DataFrame, Dict[str, Dict[str, Unit]]]:
+                    ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str, Unit]]]:
     """整理终端客户的数据"""
     rd: Dict[str, Dict[str, Unit]] = {}
+
     raw_df = pd.read_excel(path, header=0)
     raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
     df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
@@ -111,8 +109,40 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
         rd[key][name_standard].index.append(index)
 
     return_df = raw_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"])
+    return_df["红冲标记原因"] = ""
     return_df["来源"] = ["客户表"] * len(return_df)
-    return return_df, rd
+    return raw_df, return_df, rd
+
+
+def compare_different(zgzy_dict: Dict[str, Dict[str, Unit]], client_dict: Dict[str, Dict[str, Unit]]):
+    """比对不一致的数据"""
+    zgzy_different = []
+    client_different = []
+    for client_k1, client_v1 in client_dict.items():
+        if client_k1 not in zgzy_dict.keys():
+            for _, client_v2 in client_v1.items():
+                client_different.extend(client_v2.index)
+            continue
+        zgzy_v1 = zgzy_dict[client_k1]
+        for client_k2, client_v2 in client_v1.items():
+            if client_k2 not in zgzy_v1.keys():
+                client_different.extend(client_v2.index)
+                continue
+            zgzy_v2 = zgzy_v1.pop(client_k2)
+            unmatched_zgzy, unmatched_client = match_and_diff(zgzy_v2.amount, client_v2.amount)
+            for amount in unmatched_zgzy:
+                amount_index = zgzy_v2.amount.index(amount)
+                zgzy_v2.amount.pop(amount_index)
+                zgzy_different.append(zgzy_v2.index.pop(amount_index))
+            for amount in unmatched_client:
+                amount_index = client_v2.amount.index(amount)
+                client_v2.amount.pop(amount_index)
+                client_different.append(client_v2.index.pop(amount_index))
+    # 补充中国中药里面的差异数据
+    for k1, v1 in zgzy_dict.items():
+        for k2, v2 in v1.items():
+            zgzy_different.extend(v2.index)
+    return zgzy_different, client_different
 
 
 def find_combination(nums, target):
@@ -159,32 +189,6 @@ def match_and_diff(list1: List, list2: List):
     return unmatched_list1, unmatched_list2
 
 
-def deal_excel(path, indexs):
-    """根据索引填充颜色, 并新增数据"""
-    red_fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
-    wb = load_workbook(path)
-    ws = wb.active
-    # 填充颜色
-    for i in indexs:
-        ws.cell(row=i + 2, column=1).fill = red_fill
-    # 新增两列数据：年月，年月+品规
-    month_col = ws.max_column + 1
-    month_quality_col = month_col + 1
-    title = [value for row in ws.iter_rows(min_row=0, max_row=1, values_only=True) for value in row]
-    ws.cell(row=1, column=month_col, value="年月")
-    ws.cell(row=1, column=month_quality_col, value="年月+品规")
-    date_col = title.index("销售日期") + 1
-    quality_col = title.index("品规(清洗后)") + 1
-    for i in range(2, ws.max_row + 1):
-        month_str = ws.cell(row=i, column=date_col).value
-        month_str = month_str.replace(" ", "")
-        month_str = datetime.datetime.strptime(month_str, "%Y-%m-%d").strftime("%Y-%m")
-        quality = ws.cell(row=i, column=quality_col).value
-        ws.cell(row=i, column=month_col, value=month_str)
-        ws.cell(row=i, column=month_quality_col, value=f"{quality}{month_str}")
-    wb.save(path)
-
-
 def get_xlwt_color_style(color):
     """获取颜色样式"""
     style = xlwt.XFStyle()
@@ -195,69 +199,31 @@ def get_xlwt_color_style(color):
     return style
 
 
-def main():
-    zgzy_path = r"E:\NewFolder\liuxiang\中国中药表.xlsx"
-    client_path = r"E:\NewFolder\liuxiang\客户表.xlsx"
-    print("读取中国中药数据表")
-    zgzy_df, zgzy_dict, client_database = get_zgzy_data(zgzy_path)
-    print("读取终端客户的数据表")
-    client_df, client_dict = get_client_data(client_path, client_database)
-    print("开始比对数据，获取差异项")
-    zgzy_different = []
-    client_different = []
-    for client_k1, client_v1 in client_dict.items():
-        if client_k1 not in zgzy_dict:
-            for _, client_v2 in client_v1.items():
-                client_different.extend(client_v2.index)
-            continue
-        zgzy_v1 = zgzy_dict[client_k1]
-        for client_k2, client_v2 in client_v1.items():
-            if client_k2 not in zgzy_v1:
-                client_different.extend(client_v2.index)
-                continue
-            zgzy_v2 = zgzy_v1.pop(client_k2)
-            unmatched_zgzy, unmatched_client = match_and_diff(zgzy_v2.amount, client_v2.amount)
-            for amount in unmatched_zgzy:
-                amount_index = zgzy_v2.amount.index(amount)
-                zgzy_v2.amount.pop(amount_index)
-                zgzy_different.append(zgzy_v2.index.pop(amount_index))
-            for amount in unmatched_client:
-                amount_index = client_v2.amount.index(amount)
-                client_v2.amount.pop(amount_index)
-                client_different.append(client_v2.index.pop(amount_index))
-    # 补充中国中药里面的差异数据
-    for _, v1 in zgzy_dict.items():
-        for _, v2 in v1.items():
-            zgzy_different.extend(v2.index)
-    print("针对差异数据,在原始表上进行标红,并新增数据")
-    deal_excel(zgzy_path, zgzy_different)
-    deal_excel(client_path, client_different)
-    print("输出差异表")
-    yellow = get_xlwt_color_style("yellow")
-    orange = get_xlwt_color_style("orange")
-    wb = xlwt.Workbook()
-    ws: Worksheet = wb.add_sheet("Sheet1")
-    for j, value in enumerate(zgzy_df.columns):
+def deal_excel(data: pd.DataFrame, ws: Worksheet, indexs):
+    """根据索引填充颜色, 并新增数据"""
+    # 新增数据
+    data = data.fillna("")
+    data["年月"] = pd.to_datetime(data['销售日期']).dt.strftime('%Y-%m')
+    data["年月+品规"] = data["品规(清洗后)"] + data["年月"]
+    # 填充颜色及数据
+    red = get_xlwt_color_style("red")
+    for j, value in enumerate(data.columns):
         ws.write(0, j, value)
-    row_i = 0
-    for index, row in zgzy_df.iterrows():
-        row_i += 1
+    for index, row in data.iterrows():
+        row_i = index + 1
         for j, value in enumerate(row):
-            if index in zgzy_different:
-                ws.write(row_i, j, value, yellow)
+            value = str(value)
+            if index in indexs:
+                ws.write(row_i, j, value, red)
             else:
                 ws.write(row_i, j, value)
-    for index, row in client_df.iterrows():
-        row_i += 1
-        for j, value in enumerate(row):
-            if index in client_different:
-                ws.write(row_i, j, value, orange)
-            else:
-                ws.write(row_i, j, value)
-    # 整理合并表
+
+
+def statistics_names(zgzy_df_tidy: pd.DataFrame, client_df_tidy: pd.DataFrame):
+    """将数据按品规的方式进行统计"""
     quality_dict = collections.defaultdict(lambda: [0, 0])
     month_quality_dict = collections.defaultdict(lambda: [0, 0])
-    for i, df in enumerate([zgzy_df, client_df]):
+    for i, df in enumerate([zgzy_df_tidy, client_df_tidy]):
         for j, row in df.iterrows():
             name: str = row["品规(清洗后)"]
             name = name.replace(" ", "")
@@ -265,28 +231,170 @@ def main():
             amount = row["销售数量"]
             quality_dict[name][i] += amount
             month_quality_dict[f"{name}{date}"][i] += amount
-    ws: Worksheet = wb.add_sheet("Sheet2")
-    title = ["品规(清洗后)", "系统数量", "商业数量", "差异", "备注"]
-    for j, value in enumerate(title):
-        ws.write(0, j, value)
-    row_i = 0
+
+    quality_df = []
     for key, value in quality_dict.items():
-        row_i += 1
-        ws.write(row_i, 0, key)
-        ws.write(row_i, 1, value[0])
-        ws.write(row_i, 2, value[1])
-        ws.write(row_i, 3, value[0] - value[1])
-    title = ["年月+品规", "系统数量", "商业数量", "差异", "备注"]
-    for j, value in enumerate(title):
-        ws.write(0, j + 7, value)
-    row_i = 0
+        quality_df.append([key, value[0], value[1]])
+    quality_df = pd.DataFrame(quality_df, columns=["品规(清洗后)", "系统数量", "商业数量"])
+    month_quality_df = []
     for key, value in month_quality_dict.items():
+        month_quality_df.append([key, value[0], value[1]])
+    month_quality_df = pd.DataFrame(month_quality_df, columns=["年月+品规", "系统数量", "商业数量"])
+
+    return quality_df, month_quality_df
+
+
+STR2COLOR = {
+    "yellow": get_xlwt_color_style("yellow"),
+    "orange": get_xlwt_color_style("orange"),
+    "": Style.default_style
+}
+
+
+def tidy_different_data(zgzy_df_tidy: pd.DataFrame, zgzy_different,
+                        client_df_tidy: pd.DataFrame, client_different):
+    """整理差异数据表"""
+    zgzy_df_different = zgzy_df_tidy.copy()
+    zgzy_df_different["color"] = ""
+    zgzy_df_different.loc[zgzy_different, "color"] = "yellow"
+    client_df_different = client_df_tidy.copy()
+    client_df_different["color"] = ""
+    client_df_different.loc[client_different, "color"] = "orange"
+    df = pd.concat([zgzy_df_different, client_df_different], ignore_index=True)
+    df = df.fillna("")
+    return df
+
+
+def tidy_different_detail(quality_df: pd.DataFrame, month_quality_df: pd.DataFrame):
+    """整理差异明细"""
+    quality_df_len = len(quality_df)
+    month_quality_df_len = len(month_quality_df)
+
+    titles = ["品规(清洗后)", "系统数量", "商业数量", "差异", "备注", "", "", "年月+品规", "系统数量", "商业数量", "差异", "备注"]
+    data = pd.DataFrame("", index=range(max(quality_df_len, month_quality_df_len)), columns=titles)
+
+    data.iloc[:quality_df_len, 0] = quality_df["品规(清洗后)"]
+    data.iloc[:quality_df_len, 1] = quality_df["系统数量"]
+    data.iloc[:quality_df_len, 2] = quality_df["商业数量"]
+    data.iloc[:quality_df_len, 3] = quality_df["系统数量"] - quality_df["商业数量"]
+
+    data.iloc[:month_quality_df_len, 7] = month_quality_df["年月+品规"]
+    data.iloc[:month_quality_df_len, 8] = month_quality_df["系统数量"]
+    data.iloc[:month_quality_df_len, 9] = month_quality_df["商业数量"]
+    data.iloc[:month_quality_df_len, 10] = month_quality_df["系统数量"] - month_quality_df["商业数量"]
+    return data
+
+
+def tidy_zgzy_perspective(quality_df: pd.DataFrame, month_quality_df: pd.DataFrame):
+    """整理透视表数据"""
+    # 清理非中国中药的有效数据
+    quality_df = quality_df[quality_df["系统数量"] != 0]
+    month_quality_df = month_quality_df[month_quality_df["系统数量"] != 0]
+
+    quality_df_len = len(quality_df)
+    month_quality_df_len = len(month_quality_df)
+
+    titles = ["品规(清洗后)", "求和项:数量", "", "品规(清洗后)", "系统数量", "商业数量", "差异", "备注", "",
+              "年月+品规", "求和项:数量", "", "年月+品规", "系统数量", "商业数量", "差异", "备注"]
+    data = pd.DataFrame("", index=range(max(quality_df_len, month_quality_df_len)), columns=titles)
+
+    data.iloc[:quality_df_len, 0] = quality_df["品规(清洗后)"]
+    data.iloc[:quality_df_len, 1] = quality_df["系统数量"]
+
+    data.iloc[:quality_df_len, 3] = quality_df["品规(清洗后)"]
+    data.iloc[:quality_df_len, 4] = quality_df["系统数量"]
+    data.iloc[:quality_df_len, 5] = quality_df["商业数量"]
+    data.iloc[:quality_df_len, 6] = quality_df["系统数量"] - quality_df["商业数量"]
+
+    data.iloc[:month_quality_df_len, 9] = month_quality_df["年月+品规"]
+    data.iloc[:month_quality_df_len, 10] = month_quality_df["系统数量"]
+
+    data.iloc[:month_quality_df_len, 12] = month_quality_df["年月+品规"]
+    data.iloc[:month_quality_df_len, 13] = month_quality_df["系统数量"]
+    data.iloc[:month_quality_df_len, 14] = month_quality_df["商业数量"]
+    data.iloc[:month_quality_df_len, 15] = month_quality_df["系统数量"] - month_quality_df["商业数量"]
+    return data
+
+
+def tidy_client_perspective(quality_df: pd.DataFrame, month_quality_df: pd.DataFrame):
+    """整理透视表数据"""
+    # 清理非中国中药的有效数据
+    quality_df = quality_df[quality_df["商业数量"] != 0]
+    month_quality_df = month_quality_df[month_quality_df["商业数量"] != 0]
+
+    quality_df_len = len(quality_df)
+    month_quality_df_len = len(month_quality_df)
+
+    titles = ["品规(清洗后)", "求和项:数量", "", "品规(清洗后)", "商业数量", "系统数量", "差异", "备注", "",
+              "年月+品规", "求和项:数量", "", "年月+品规", "商业数量", "系统数量", "差异", "备注"]
+    data = pd.DataFrame("", index=range(max(quality_df_len, month_quality_df_len)), columns=titles)
+
+    data.iloc[:quality_df_len, 0] = quality_df["品规(清洗后)"]
+    data.iloc[:quality_df_len, 1] = quality_df["商业数量"]
+
+    data.iloc[:quality_df_len, 3] = quality_df["品规(清洗后)"]
+    data.iloc[:quality_df_len, 4] = quality_df["商业数量"]
+    data.iloc[:quality_df_len, 5] = quality_df["系统数量"]
+    data.iloc[:quality_df_len, 6] = quality_df["商业数量"] - quality_df["系统数量"]
+
+    data.iloc[:month_quality_df_len, 9] = month_quality_df["年月+品规"]
+    data.iloc[:month_quality_df_len, 10] = month_quality_df["商业数量"]
+
+    data.iloc[:month_quality_df_len, 12] = month_quality_df["年月+品规"]
+    data.iloc[:month_quality_df_len, 13] = month_quality_df["商业数量"]
+    data.iloc[:month_quality_df_len, 14] = month_quality_df["系统数量"]
+    data.iloc[:month_quality_df_len, 15] = month_quality_df["商业数量"] - month_quality_df["系统数量"]
+    return data
+
+
+def write_data(ws: Worksheet, data: pd.DataFrame):
+    """将数据写入EXCEL表格"""
+    titles = data.columns.tolist()
+    if "color" in titles:
+        titles.remove("color")
+    for j, value in enumerate(titles):
+        ws.write(0, j, value)
+    for row_i, row_value in data.iterrows():
         row_i += 1
-        ws.write(row_i, 7, key)
-        ws.write(row_i, 8, value[0])
-        ws.write(row_i, 9, value[1])
-        ws.write(row_i, 10, value[0] - value[1])
-    wb.save(r"E:\NewFolder\liuxiang\核查报告.xls")
+        color = STR2COLOR[row_value.pop("color") if "color" in row_value.index else ""]
+        for col_i, value in enumerate(row_value):
+            ws.write(row_i, col_i, value, color)
+
+
+def main():
+    path1 = r"E:\NewFolder\liuxiang\中国中药表.xlsx"
+    path2 = r"E:\NewFolder\liuxiang\客户表.xlsx"
+    print("读取中国中药数据表")
+    zgzy_df, zgzy_df_tidy, zgzy_dict, client_database = get_zgzy_data(path1)
+    print("读取终端客户的数据表")
+    client_df, client_df_tidy, client_dict = get_client_data(path2, client_database)
+    print("开始比对数据，获取差异项")
+    zgzy_different, client_different = compare_different(zgzy_dict, client_dict)
+    print("整理中国中药及客户的数据")
+    quality_df, month_quality_df = statistics_names(zgzy_df_tidy, client_df_tidy)
+    print("定义结果表")
+    wb = xlwt.Workbook()
+    print("导入原始数据并标红")
+    deal_excel(zgzy_df, wb.add_sheet("营销系统原始流向"), zgzy_different)
+    deal_excel(client_df, wb.add_sheet("商业收集原始流向"), client_different)
+    print("输出差异表")
+    ws: Worksheet = wb.add_sheet("差异表")
+    data = tidy_different_data(zgzy_df_tidy, zgzy_different, client_df_tidy, client_different)
+    write_data(ws, data)
+    print("输出差异细节表")
+    ws: Worksheet = wb.add_sheet("差异细节表")
+    data = tidy_different_detail(quality_df, month_quality_df)
+    write_data(ws, data)
+    print("输出营销系统透视流向表")
+    ws: Worksheet = wb.add_sheet("营销系统透视流向表")
+    data = tidy_zgzy_perspective(quality_df, month_quality_df)
+    write_data(ws, data)
+    print("输出商业收集透视流向表")
+    ws: Worksheet = wb.add_sheet("商业收集透视流向")
+    data = tidy_client_perspective(quality_df, month_quality_df)
+    write_data(ws, data)
+    print("保存结果表")
+    wb.save(r"E:\NewFolder\liuxiang\结果.xls")
     print("程序已运行完毕")
 
 
