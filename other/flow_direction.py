@@ -215,7 +215,6 @@ def deal_excel(data: pd.DataFrame, ws: Worksheet, indexs):
     data["年月+品规"] = data["品规(清洗后)"] + data["年月"]
     # 修改类型
     data = data.astype(str)
-    data["序号"] = data["序号"].astype(int)
     # 写入数据
     data["color"] = ""
     data.loc[indexs, "color"] = "red"
