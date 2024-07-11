@@ -62,14 +62,13 @@ def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str,
         rd[key][name_standard].amount.append(amount)
         rd[key][name_standard].index.append(index)
 
-    return_df = raw_df.reindex(columns=["销售日期", "购入客户名称(原始)", "品规(清洗后)", "标准批号", "数量", "是否已红冲"])
+    return_df = raw_df.reindex(columns=["销售日期", "购入客户名称(原始)", "品规(清洗后)", "标准批号", "数量", "是否已红冲", "序号"])
     return_df = return_df.rename(columns={
         "购入客户名称(原始)": "客户名称",
         "标准批号": "批号",
         "数量": "销售数量"
     })
     return_df["来源"] = ["中国中药表"] * len(return_df)
-    return_df["序号"] = range(1, len(return_df) + 1)
     return raw_df, return_df, rd, name2standard
 
 
@@ -80,7 +79,7 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
 
     raw_df = pd.read_excel(path, header=0)
     raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
-    raw_df["序号"] = range(1, len(raw_df) + 1)
+    raw_df["序号"] = [f"({i})" for i in range(1, len(raw_df) + 1)]
 
     df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
     df.loc[:, "批号"] = df["批号"].astype(str)
@@ -118,10 +117,8 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
         rd[key][name_standard].amount.append(row["销售数量"])
         rd[key][name_standard].index.append(index)
 
-    return_df = raw_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"])
-    return_df["是否已红冲"] = ""
+    return_df = raw_df.reindex(columns=["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量", "是否已红冲", "序号"])
     return_df["来源"] = ["客户表"] * len(return_df)
-    return_df["序号"] = range(1, len(return_df) + 1)
     return raw_df, return_df, rd
 
 
@@ -419,11 +416,8 @@ def main(path):
     zgzy_different, client_different = compare_different(zgzy_dict, client_dict)
     print("整理中国中药及客户的数据")
     quality_df, month_quality_df = statistics_names(zgzy_df_tidy, client_df_tidy)
-    print("定义结果表")
+    print("定义核查报告表")
     wb = xlwt.Workbook()
-    print("导入原始数据并标红")
-    deal_excel(zgzy_df, wb.add_sheet("营销系统原始流向"), zgzy_different)
-    deal_excel(client_df, wb.add_sheet("商业收集原始流向"), client_different)
     print("输出差异表")
     ws: Worksheet = wb.add_sheet("差异表")
     data = tidy_different_data(zgzy_df_tidy, zgzy_different, client_df_tidy, client_different)
@@ -432,6 +426,13 @@ def main(path):
     ws: Worksheet = wb.add_sheet("差异细节表")
     data = tidy_different_detail(quality_df, month_quality_df)
     write_data(ws, data)
+    print("保存核查报告")
+    wb.save(os.path.join(path, "核查报告.xls"))
+    print("定义结果表")
+    wb = xlwt.Workbook()
+    print("导入原始数据并标红")
+    deal_excel(zgzy_df, wb.add_sheet("营销系统原始流向"), zgzy_different)
+    deal_excel(client_df, wb.add_sheet("商业收集原始流向"), client_different)
     print("输出营销系统透视流向表")
     ws: Worksheet = wb.add_sheet("营销系统透视流向表")
     data = tidy_zgzy_perspective(quality_df, month_quality_df)
