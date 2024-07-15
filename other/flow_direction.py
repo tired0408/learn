@@ -1,4 +1,5 @@
 import os
+import re
 import xlwt
 import datetime
 import collections
@@ -38,12 +39,18 @@ def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str,
     name2standard: Dict[str, Dict[str, str]] = {}
 
     raw_df = pd.read_excel(path, header=0)
+    # 添加数据
     raw_df["序号"] = range(1, len(raw_df) + 1)
+    # 整理格式
+    raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
+    raw_df.loc[:, "购入客户名称(原始)"] = raw_df["购入客户名称(原始)"].astype(str)
+    raw_df.loc[:, "购入客户名称(清洗后)"] = raw_df["购入客户名称(清洗后)"].astype(str)
+    raw_df.loc[:, "标准批号"] = raw_df["标准批号"].astype(str)
+    raw_df.loc[:, "标准批号"] = raw_df["标准批号"].str.upper()
+    raw_df = raw_df.apply(lambda col: col.apply(lambda x: re.sub(r'[\s\\n]+', '', x) if isinstance(x, str) else x))
 
+    # 获取数据
     df = raw_df[["销售日期", "购入客户名称(原始)", "购入客户名称(清洗后)", "品规(清洗后)", "标准批号", "数量"]]
-    df.loc[:, "标准批号"] = df["标准批号"].astype(str)
-    df.loc[:, "标准批号"] = df["标准批号"].str.upper()
-    df = df.apply(lambda x: x.str.replace(' ', '') if x.dtype == 'object' else x)
 
     for index, row in df.iterrows():
         name = row["购入客户名称(原始)"]
@@ -79,13 +86,16 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
     rd: Dict[str, Dict[str, Unit]] = {}
 
     raw_df = pd.read_excel(path, header=0)
-    raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
+    # 添加数据
     raw_df["序号"] = [f"({i})" for i in range(1, len(raw_df) + 1)]
+    # 整理格式
+    raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
+    raw_df.loc[:, "客户名称"] = raw_df["客户名称"].astype(str)
+    raw_df.loc[:, "批号"] = raw_df["批号"].astype(str)
+    raw_df.loc[:, "批号"] = raw_df["批号"].str.upper()
+    raw_df = raw_df.apply(lambda col: col.apply(lambda x: re.sub(r'[\s\\n]+', '', x) if isinstance(x, str) else x))
 
     df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
-    df.loc[:, "批号"] = df["批号"].astype(str)
-    df.loc[:, "批号"] = df["批号"].str.upper()
-    df = df.apply(lambda x: x.str.replace(' ', '') if x.dtype == 'object' else x)
 
     for index, row in df.iterrows():
         quality_regulation = row["品规(清洗后)"]
