@@ -42,6 +42,7 @@ def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str,
 
     df = raw_df[["销售日期", "购入客户名称(原始)", "购入客户名称(清洗后)", "品规(清洗后)", "标准批号", "数量"]]
     df.loc[:, "标准批号"] = df["标准批号"].astype(str)
+    df.loc[:, "标准批号"] = df["标准批号"].str.upper()
     df = df.apply(lambda x: x.str.replace(' ', '') if x.dtype == 'object' else x)
 
     for index, row in df.iterrows():
@@ -83,6 +84,7 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
 
     df = raw_df[["销售日期", "客户名称", "品规(清洗后)", "批号", "销售数量"]]
     df.loc[:, "批号"] = df["批号"].astype(str)
+    df.loc[:, "批号"] = df["批号"].str.upper()
     df = df.apply(lambda x: x.str.replace(' ', '') if x.dtype == 'object' else x)
 
     for index, row in df.iterrows():
@@ -106,6 +108,13 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
                     continue
                 similarity_score = score
                 similarity_name = name
+            name_list = list(client_database[key].keys())
+            for name in name_list:
+                score = similarity_match(name, name_standard)
+                if score < 0.8 or score < similarity_score:
+                    continue
+                similarity_score = score
+                similarity_name = client_database[key][name]
             if similarity_name is None:
                 print(f"[警告]客户名匹配异常, 未找到匹配项，请核实:{key}, {name_standard}, {name_list}")
             else:
