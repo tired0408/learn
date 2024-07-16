@@ -449,5 +449,4 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--deliver", action="store_true", help="是否导出发货分析表，默认库存导入表")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
-    opt["deliver"] = True
     main(opt["path"], opt["deliver"])
