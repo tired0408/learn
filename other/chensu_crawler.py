@@ -116,7 +116,9 @@ class DataToExcel:
             self.ws.write(row_i, 4, now_date, date_style)
             if "库存周转天数" in row:
                 day = row.pop("库存周转天数")
-                if day > 45:
+                if day == "":
+                    pass
+                elif day > 45:
                     self.ws.write(row_i, GOL.title.index("库存周转天数"), day)
                 elif day < 0:
                     self.ws.write(row_i, GOL.title.index("库存周转天数"), '动销缓慢')
@@ -327,21 +329,27 @@ def read_breakpoint() -> Tuple[set, dict]:
     if not os.path.exists(GOL.save_path):
         print("无断点数据,从头到尾抓取")
         return set(), None
-    datas = pd.read_excel(GOL.save_path)
-    datas["本期库存*"].fillna(0, inplace=True)
+    # 整理格式
+    raw_data = pd.read_excel(GOL.save_path)
+    if "库存周转天数" in list(raw_data.columns):
+        raw_data["库存周转天数"] = pd.to_numeric(raw_data["库存周转天数"], errors='coerce')
+    raw_data = raw_data.fillna("")
+    # 获取断点数据
+    datas = raw_data.copy()
+    datas["本期库存*"] = datas["本期库存*"].fillna(0)
     datas['本期库存*'] = pd.to_numeric(datas['本期库存*'], errors='coerce')
     datas = datas.groupby("一级商业*")["本期库存*"].sum().reset_index()
     datas = datas[datas['本期库存*'] != 0]
-    ignore_names = datas["一级商业*"].tolist()
+    ignore_names = set(datas["一级商业*"].tolist())
     print(f"检测到断点,进行断点续查。已抓取数据:{ignore_names}")
     # 整理断点数据
-    datas = pd.read_excel(GOL.save_path)
-    datas.fillna("", inplace=True)
     rd = {}
-    for _, row in datas.iterrows():
+    for _, row in raw_data.iterrows():
         client_name = row["一级商业*"]
         if client_name not in ignore_names:
             continue
+        if row.isnull().values.any():
+            print(row)
         product_name = row["商品信息*"]
         data = row.to_dict()
         data.pop("库存日期*")
@@ -441,4 +449,5 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--deliver", action="store_true", help="是否导出发货分析表，默认库存导入表")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
+    opt["deliver"] = True
     main(opt["path"], opt["deliver"])
