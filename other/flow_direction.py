@@ -4,6 +4,8 @@ import xlwt
 import datetime
 import collections
 import pandas as pd
+import xlsxwriter
+from xlsxwriter.worksheet import Worksheet as XLSXWorksheet
 from xlwt.Worksheet import Worksheet, Style
 from itertools import combinations
 from typing import List, Dict, Tuple
@@ -45,6 +47,7 @@ def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str,
     raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
     raw_df.loc[:, "购入客户名称(原始)"] = raw_df["购入客户名称(原始)"].astype(str)
     raw_df.loc[:, "购入客户名称(清洗后)"] = raw_df["购入客户名称(清洗后)"].astype(str)
+    raw_df.loc[:, "标准批号"] = raw_df["标准批号"].fillna("")
     raw_df.loc[:, "标准批号"] = raw_df["标准批号"].astype(str)
     raw_df.loc[:, "标准批号"] = raw_df["标准批号"].str.upper()
     raw_df = raw_df.apply(lambda col: col.apply(lambda x: re.sub(r'[\s\\n]+', '', x) if isinstance(x, str) else x))
@@ -414,6 +417,19 @@ def write_data(ws: Worksheet, data: pd.DataFrame):
             ws.write(row_i, col_i, value, color)
 
 
+def xlsx_write_data(ws: XLSXWorksheet, data: pd.DataFrame, str2color):
+    titles = data.columns.tolist()
+    if "color" in titles:
+        titles.remove("color")
+    for j, value in enumerate(titles):
+        ws.write(0, j, value)
+    for row_i, row_value in data.iterrows():
+        row_i += 1
+        color = str2color[row_value.pop("color") if "color" in row_value.index else ""]
+        for col_i, value in enumerate(row_value):
+            ws.write(row_i, col_i, value, color)
+
+
 def format_dates(date_list: List):
     """格式化日期列表"""
     date_list.sort()
@@ -434,18 +450,26 @@ def main(path):
     zgzy_different, client_different = compare_different(zgzy_dict, client_dict)
     print("整理中国中药及客户的数据")
     quality_df, month_quality_df = statistics_names(zgzy_df_tidy, client_df_tidy)
+
     print("定义核查报告表")
-    wb = xlwt.Workbook()
+    wb = xlsxwriter.Workbook('核查报告.xlsx')
+    str2color = {
+        "yellow": wb.add_format({'bg_color': 'yellow'}),
+        "orange": wb.add_format({'bg_color': 'orange'}),
+        "red": wb.add_format({'bg_color': 'red'}),
+        "": None
+    }
     print("输出差异表")
-    ws: Worksheet = wb.add_sheet("差异表")
+    ws: XLSXWorksheet = wb.add_worksheet("差异表")
     data = tidy_different_data(zgzy_df_tidy, zgzy_different, client_df_tidy, client_different)
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
     print("输出差异细节表")
-    ws: Worksheet = wb.add_sheet("差异细节表")
+    ws: XLSXWorksheet = wb.add_worksheet("差异细节表")
     data = tidy_different_detail(quality_df, month_quality_df)
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
     print("保存核查报告")
-    wb.save(os.path.join(path, "核查报告.xls"))
+    wb.close()
+
     print("定义结果表")
     wb = xlwt.Workbook()
     print("导入原始数据并标红")
