@@ -44,8 +44,8 @@ class Golbal:
         if is_deliver:
             self.save_path = os.path.join(path, f"发货分析表{now_day}.xls")
             self.title = ["一级商业*", "商品信息*", "本期库存*", "库存日期*", "库存获取日期*", "在途", "参考信息",
-                          "备注", "近3个月月均销量", "库存周转天数"]
-            self.widths = [10, 10, 10, 12, 14, 10, 10, 10, 10, 10]
+                          "备注", "当月销售数量", "近3个月月均销量", "库存周转天数"]
+            self.widths = [10, 10, 10, 12, 14, 10, 10, 10, 10, 10, 10]
         else:
             self.save_path = os.path.join(path, f"库存导入{now_day}.xls")
             self.title = ["一级商业*", "商品信息*", "本期库存*", "库存日期*", "库存获取日期*", "在途", "参考信息", "备注"]
@@ -193,6 +193,12 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
                 sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
+        datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
+        for product_name, _, sales, _ in datas:
+            id = GOL.get_id(client_name, product_name)
+            if "人胰岛素注射液" in product_name:
+                sales = sales * 2
+            rd[id]["当月销售数量"] += sales
         return calculate_turnover(rd)
 
 
@@ -220,6 +226,12 @@ class INCAWebCustom(INCAWeb, WebAbstract):
                 amount = amount * 2
             rd[id]["近3个月月均销量"] += amount
             rd[id]["备注"] = user
+        sales_list = super().get_sales(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
+        for product_name, amount in sales_list:
+            id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
+                amount = amount * 2
+            rd[id]["当月销售数量"] += amount
         return calculate_turnover(rd)
 
 
@@ -246,6 +258,12 @@ class LYWebCustom(LYWeb, WebAbstract):
                 sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
+        datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
+        for product_name, _, sales, _ in datas:
+            id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                sales = sales * 2
+            rd[id]["当月销售数量"] += sales
         return calculate_turnover(rd)
 
 
@@ -273,6 +291,12 @@ class TCWebCustom(TCWeb, WebAbstract):
                 sales = sales * 2
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
+        datas = super().get_product_flow(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
+        for product_name, sales in datas:
+            id = GOL.get_id(client_name, product_name)
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                sales = sales * 2
+            rd[id]["当月销售数量"] += sales
         return calculate_turnover(rd)
 
 
@@ -289,8 +313,32 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
                 rd[id]["本期库存*"] += amount
         return rd
 
-    def export_deliver(self, client_name) -> dict:
-        pass
+    def export_deliver(self, client_name, user) -> dict:
+        rd: dict = self.export_inventory(client_name)
+        now_date = datetime.datetime.now()
+        d1_end = now_date.replace(day=1) - relativedelta(days=1)
+        d1 = d1_end.replace(day=1)
+        d2_end = d1 - relativedelta(days=1)
+        d2 = d2_end.replace(day=1)
+        d3_end = d2 - relativedelta(days=1)
+        d3 = d3_end.replace(day=1)
+        for start, end in [[d1, d1_end], [d2, d2_end], [d3, d3_end]]:
+            datas = super().get_sales(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
+            for product_name, sales in datas:
+                id = GOL.get_id(client_name, product_name)
+                if "复方α-酮酸片" in product_name and "近3个月月均销量*" in GOL.data[id]:
+                    GOL.data[id]["近3个月月均销量"] += sales
+                else:
+                    rd[id]["近3个月月均销量"] += sales
+                    rd[id]["备注"] = user
+        datas = super().get_sales(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
+        for product_name, sales in datas:
+            id = GOL.get_id(client_name, product_name)
+            if "复方α-酮酸片" in product_name and "当月销售数量" in GOL.data[id]:
+                GOL.data[id]["当月销售数量"] += sales
+            else:
+                rd[id]["当月销售数量"] += sales
+        return calculate_turnover(rd)
 
 
 def calculate_turnover(data: dict):

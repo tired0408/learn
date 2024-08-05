@@ -564,26 +564,14 @@ class DruggcWeb:
         获取库存数据
         :return: [(商品名称, 库存数量, 批号), ...]
         """
-        self.driver.switch_to.default_content()
-        self.driver.find_element(By.XPATH, "//span[text()='库存明细']").click()
-        self.driver.switch_to.frame(self.driver.find_element(By.ID, "mainframe"))
-        condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
-        WebDriverWait(self.driver, 60).until_not(condition)
-        button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
-        button.click()
-        file_name = wait_download(self.path, f"库存明细{datetime.now().strftime('%Y%m%d%H')}")
-        file_path = os.path.join(self.path, file_name)
-        print(f"文件下载已完成:{file_path}")
-        time.sleep(1)
-        data = pd.read_excel(file_path, header=1)
-        rd = []
-        for _, row in data.iterrows():
+        def deal_inventory(row):
             product_name: str = row["通用名"] + row["规格"]
             product_name = product_name.replace(" ", "")
             amount = int(row["数量"])
             code = str(row["批号"])
-            rd.append([product_name, amount, code])
-        os.remove(file_path)
+            return [product_name, amount, code]
+        self.__search_data("库存明细")
+        rd = self.__get_data_by_excel(deal_inventory)
         print(f"[片仔癀宏仁医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -597,36 +585,46 @@ class DruggcWeb:
             product_name = product_name.replace(" ", "")
             amount = int(elements[9].text)
             return [product_name, amount]
-        rd = self.get_table_data(deal_restock, "进货明细", start_date)
+        self.__search_data("进货明细", start_date)
+        rd = self.__get_data_by_excel(deal_restock)
         print(f"[片仔癀宏仁医药]进货数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
-    def get_sales(self, start_date):
+    def get_sales(self, start_date, end_date=None):
         """
         获取销售数据
         :return: [(商品名称, 销售数量), ...]
         """
-        def deal_sales(elements: List[WebElement]):
-            product_name = elements[2].text + elements[3].text
+        def deal_sales(row):
+            product_name: str = row["通用名"] + row["规格"]
             product_name = product_name.replace(" ", "")
-            amount = int(elements[4].text)
+            amount = int(row["流向数量"])
             return [product_name, amount]
-        rd = self.get_table_data(deal_sales, '供应商流向', start_date)
-        print(f"[片仔癀宏仁医药]销售数据抓取已完成，共抓取{len(rd)}条数据")
+        self.__search_data('供应商流向', start_date, end_date)
+        rd = self.__get_data_by_excel(deal_sales)
         return rd
 
-    def get_table_data(self, deal_func, table_type, start_date=None):
-        """获取表格数据"""
+    def __search_data(self, table_type, start_date=None, end_date=None):
+        """根据条件查询信息"""
         self.driver.switch_to.default_content()
         self.driver.find_element(By.XPATH, f"//span[text()='{table_type}']").click()
         self.driver.switch_to.frame(self.driver.find_element(By.ID, "mainframe"))
+        c1 = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
+        WebDriverWait(self.driver, 60).until_not(c1)
         if start_date is not None:
-            start_element = self.driver.find_element(By.ID, "beginCreateTime")
-            self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
-            c1 = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
-            WebDriverWait(self.driver, 60).until_not(c1)
+            element = self.driver.find_element(By.ID, "beginCreateTime")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+        if end_date is not None:
+            element = self.driver.find_element(By.ID, "endCreateTime")
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+        if start_date is not None or end_date is not None:
             ele = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='查询']")))
             ele.click()
+        condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
+        WebDriverWait(self.driver, 60).until_not(condition)
+
+    def get_data_by_table(self, deal_func):
+        """从网站上的表格获取数据"""
         rd = []
         while True:
             condition = EC.visibility_of_element_located((By.CLASS_NAME, "fixed-table-loading"))
@@ -644,6 +642,20 @@ class DruggcWeb:
                 break
             page_info.find_element(By.XPATH, "//li[contains(@class, 'page-next')]/a").click()
         return rd
+
+    def __get_data_by_excel(self, deal_func):
+        """通过导出文件获取数据"""
+        button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
+        button.click()
+        file_name = wait_download(self.path, f"库存明细{datetime.now().strftime('%Y%m%d%H')}")
+        file_path = os.path.join(self.path, file_name)
+        print(f"文件下载已完成:{file_path}")
+        time.sleep(1)
+        data = pd.read_excel(file_path, header=1)
+        rd = []
+        for _, row in data.iterrows():
+            rd.append(deal_func(row))
+        os.remove(file_path)
 
 
 def wait_download(download_path, name):
