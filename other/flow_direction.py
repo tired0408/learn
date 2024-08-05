@@ -1,12 +1,10 @@
 import os
 import re
-import xlwt
 import datetime
 import collections
 import pandas as pd
 import xlsxwriter
 from xlsxwriter.worksheet import Worksheet as XLSXWorksheet
-from xlwt.Worksheet import Worksheet, Style
 from itertools import combinations
 from typing import List, Dict, Tuple
 from difflib import SequenceMatcher
@@ -47,8 +45,8 @@ def get_zgzy_data(path) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Dict[str,
     raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
     raw_df.loc[:, "购入客户名称(原始)"] = raw_df["购入客户名称(原始)"].astype(str)
     raw_df.loc[:, "购入客户名称(清洗后)"] = raw_df["购入客户名称(清洗后)"].astype(str)
+    raw_df['标准批号'] = raw_df['标准批号'].astype(str)
     raw_df.loc[:, "标准批号"] = raw_df["标准批号"].fillna("")
-    raw_df.loc[:, "标准批号"] = raw_df["标准批号"].astype(str)
     raw_df.loc[:, "标准批号"] = raw_df["标准批号"].str.upper()
     raw_df = raw_df.apply(lambda col: col.apply(lambda x: re.sub(r'[\s\\n]+', '', x) if isinstance(x, str) else x))
 
@@ -93,8 +91,8 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
     raw_df["序号"] = [f"({i})" for i in range(1, len(raw_df) + 1)]
     # 整理格式
     raw_df["销售日期"] = pd.to_datetime(raw_df['销售日期']).dt.strftime('%Y-%m-%d')
-    raw_df.loc[:, "客户名称"] = raw_df["客户名称"].astype(str)
-    raw_df.loc[:, "批号"] = raw_df["批号"].astype(str)
+    raw_df["客户名称"] = raw_df["客户名称"].astype(str)
+    raw_df["批号"] = raw_df["批号"].astype(str)
     raw_df.loc[:, "批号"] = raw_df["批号"].str.upper()
     raw_df = raw_df.apply(lambda col: col.apply(lambda x: re.sub(r'[\s\\n]+', '', x) if isinstance(x, str) else x))
 
@@ -219,17 +217,7 @@ def match_and_diff(list1: List, list2: List):
     return unmatched_list1, unmatched_list2
 
 
-def get_xlwt_color_style(color):
-    """获取颜色样式"""
-    style = xlwt.XFStyle()
-    pattern = xlwt.Pattern()
-    pattern.pattern = xlwt.Pattern.SOLID_PATTERN
-    pattern.pattern_fore_colour = xlwt.Style.colour_map[color]
-    style.pattern = pattern
-    return style
-
-
-def deal_excel(data: pd.DataFrame, ws: Worksheet, indexs):
+def deal_excel(data: pd.DataFrame, ws: XLSXWorksheet, indexs, str2color):
     """根据索引填充颜色, 并新增数据"""
     # 新增数据
     data = data.fillna("")
@@ -240,7 +228,7 @@ def deal_excel(data: pd.DataFrame, ws: Worksheet, indexs):
     # 写入数据
     data["color"] = ""
     data.loc[indexs, "color"] = "red"
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
 
 
 def statistics_names(zgzy_df_tidy: pd.DataFrame, client_df_tidy: pd.DataFrame):
@@ -268,14 +256,6 @@ def statistics_names(zgzy_df_tidy: pd.DataFrame, client_df_tidy: pd.DataFrame):
     month_quality_df = pd.DataFrame(month_quality_df, columns=["年月+品规", "系统数量", "商业数量"])
 
     return quality_df, month_quality_df
-
-
-STR2COLOR = {
-    "yellow": get_xlwt_color_style("yellow"),
-    "orange": get_xlwt_color_style("orange"),
-    "red": get_xlwt_color_style("red"),
-    "": Style.default_style
-}
 
 
 def tidy_different_data(zgzy_df_tidy: pd.DataFrame, zgzy_different,
@@ -403,20 +383,6 @@ def tidy_compare_result(quality_df: pd.DataFrame, path):
     return data
 
 
-def write_data(ws: Worksheet, data: pd.DataFrame):
-    """将数据写入EXCEL表格"""
-    titles = data.columns.tolist()
-    if "color" in titles:
-        titles.remove("color")
-    for j, value in enumerate(titles):
-        ws.write(0, j, value)
-    for row_i, row_value in data.iterrows():
-        row_i += 1
-        color = STR2COLOR[row_value.pop("color") if "color" in row_value.index else ""]
-        for col_i, value in enumerate(row_value):
-            ws.write(row_i, col_i, value, color)
-
-
 def xlsx_write_data(ws: XLSXWorksheet, data: pd.DataFrame, str2color):
     titles = data.columns.tolist()
     if "color" in titles:
@@ -427,6 +393,8 @@ def xlsx_write_data(ws: XLSXWorksheet, data: pd.DataFrame, str2color):
         row_i += 1
         color = str2color[row_value.pop("color") if "color" in row_value.index else ""]
         for col_i, value in enumerate(row_value):
+            if pd.isna(value):
+                continue
             ws.write(row_i, col_i, value, color)
 
 
@@ -471,24 +439,30 @@ def main(path):
     wb.close()
 
     print("定义结果表")
-    wb = xlwt.Workbook()
+    wb = xlsxwriter.Workbook(os.path.join(path, "结果.xlsx"))
+    str2color = {
+        "yellow": wb.add_format({'bg_color': 'yellow'}),
+        "orange": wb.add_format({'bg_color': 'orange'}),
+        "red": wb.add_format({'bg_color': 'red'}),
+        "": None
+    }
     print("导入原始数据并标红")
-    deal_excel(zgzy_df, wb.add_sheet("营销系统原始流向"), zgzy_different)
-    deal_excel(client_df, wb.add_sheet("商业收集原始流向"), client_different)
+    deal_excel(zgzy_df, wb.add_worksheet("营销系统原始流向"), zgzy_different, str2color)
+    deal_excel(client_df, wb.add_worksheet("商业收集原始流向"), client_different, str2color)
     print("输出营销系统透视流向表")
-    ws: Worksheet = wb.add_sheet("营销系统透视流向表")
+    ws: XLSXWorksheet = wb.add_worksheet("营销系统透视流向表")
     data = tidy_zgzy_perspective(quality_df, month_quality_df)
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
     print("输出商业收集透视流向表")
-    ws: Worksheet = wb.add_sheet("商业收集透视流向")
+    ws: XLSXWorksheet = wb.add_worksheet("商业收集透视流向")
     data = tidy_client_perspective(quality_df, month_quality_df)
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
     print("输出比对结果表")
-    ws: Worksheet = wb.add_sheet("比对结果")
+    ws: XLSXWorksheet = wb.add_worksheet("比对结果")
     data = tidy_compare_result(quality_df, database_path)
-    write_data(ws, data)
+    xlsx_write_data(ws, data, str2color)
     print("保存结果表")
-    wb.save(os.path.join(path, "结果.xls"))
+    wb.close()
     print("程序已运行完毕")
 
 
