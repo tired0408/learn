@@ -452,7 +452,7 @@ def main(path):
     quality_df, month_quality_df = statistics_names(zgzy_df_tidy, client_df_tidy)
 
     print("定义核查报告表")
-    wb = xlsxwriter.Workbook('核查报告.xlsx')
+    wb = xlsxwriter.Workbook(os.path.join(path, "核查报告.xlsx"))
     str2color = {
         "yellow": wb.add_format({'bg_color': 'yellow'}),
         "orange": wb.add_format({'bg_color': 'orange'}),
