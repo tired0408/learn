@@ -362,8 +362,6 @@ def read_production_database():
         production_standard_name: str = row.iloc[2]
         reference = row.iloc[3]
         reference = "" if pd.isna(reference) else reference
-        if GOL.is_deliver and client_name in ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"]:
-            continue
         GOL.data[GOL.get_id(client_name, production_client_name)] = {
             "一级商业*": client_name,
             "商品信息*": production_standard_name,
@@ -479,9 +477,6 @@ def main(path, is_deliver):
     print("读取数据库信息")
     read_production_database()
     print("针对网站数据进行分类")
-    if is_deliver:
-        breakpoint_names.add("厦门片仔癀宏仁医药有限公司")
-        breakpoint_names.add("漳州片仔癀宏仁医药有限公司")
     websites_by_code, websites_no_code = analyze_website(GOL.websites_path, breakpoint_names)
     print("从网站上爬取所需数据")
     crawler_websites_data(websites_by_code, websites_no_code)

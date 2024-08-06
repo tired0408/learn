@@ -473,6 +473,9 @@ class TCWeb:
         获取库存数据
         :return: [(商品名称, 库存数量), ...]
         """
+        self.driver.find_element(By.XPATH, "//img[@src='images/menu001.gif']").click()
+        btn = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.NAME, "lnkExcel")))
+        btn.click()
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
         rd = []
         try:
@@ -493,11 +496,12 @@ class TCWeb:
         获取商品流向数据
         :return: [(商品名称, 进货数量, 销售数量), ...]
         """
+        self.driver.find_element(By.XPATH, "//img[@src='images/menu001.gif']").click()
         element = WebDriverWait(self.driver, 60).until(EC.visibility_of_element_located((By.NAME, "time1")))
         self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
         element = WebDriverWait(self.driver, 60).until(EC.visibility_of_element_located((By.NAME, "time2")))
         self.driver.execute_script("arguments[0].value = arguments[1]", element, end_date)
-        btn = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "btnSearch")))
+        btn = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.NAME, "btnSearch")))
         btn.click()
         condition = EC.visibility_of_element_located((By.XPATH, "//strong[text()='商品流向列表']"))
         element = WebDriverWait(self.driver, 60).until(condition)
@@ -571,7 +575,7 @@ class DruggcWeb:
             code = str(row["批号"])
             return [product_name, amount, code]
         self.__search_data("库存明细")
-        rd = self.__get_data_by_excel(deal_inventory)
+        rd = self.__get_data_by_excel(deal_inventory, "库存明细")
         print(f"[片仔癀宏仁医药]库存数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -586,7 +590,7 @@ class DruggcWeb:
             amount = int(elements[9].text)
             return [product_name, amount]
         self.__search_data("进货明细", start_date)
-        rd = self.__get_data_by_excel(deal_restock)
+        rd = self.__get_data_by_excel(deal_restock, "进货明细")
         print(f"[片仔癀宏仁医药]进货数据抓取已完成，共抓取{len(rd)}条数据")
         return rd
 
@@ -601,7 +605,7 @@ class DruggcWeb:
             amount = int(row["流向数量"])
             return [product_name, amount]
         self.__search_data('供应商流向', start_date, end_date)
-        rd = self.__get_data_by_excel(deal_sales)
+        rd = self.__get_data_by_excel(deal_sales, "供应商流向")
         return rd
 
     def __search_data(self, table_type, start_date=None, end_date=None):
@@ -643,11 +647,11 @@ class DruggcWeb:
             page_info.find_element(By.XPATH, "//li[contains(@class, 'page-next')]/a").click()
         return rd
 
-    def __get_data_by_excel(self, deal_func):
+    def __get_data_by_excel(self, deal_func, name):
         """通过导出文件获取数据"""
         button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
         button.click()
-        file_name = wait_download(self.path, f"库存明细{datetime.now().strftime('%Y%m%d%H')}")
+        file_name = wait_download(self.path, f"{name}{datetime.now().strftime('%Y%m%d%H')}")
         file_path = os.path.join(self.path, file_name)
         print(f"文件下载已完成:{file_path}")
         time.sleep(1)
@@ -656,13 +660,14 @@ class DruggcWeb:
         for _, row in data.iterrows():
             rd.append(deal_func(row))
         os.remove(file_path)
+        return rd
 
 
 def wait_download(download_path, name):
     """等待开始下载"""
     st = time.time()
     while True:
-        if (time.time() - st) > 300:
+        if (time.time() - st) > 600:
             raise Exception("Waiting download timeout.")
         files = os.listdir(download_path)
         for file_name in files:
