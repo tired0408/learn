@@ -100,7 +100,7 @@ def get_client_data(path, client_database: Dict[str, Dict[str, str]]
 
     for index, row in df.iterrows():
         quality_regulation = row["品规(清洗后)"]
-        date: pd.Timestamp = row["销售日期"]
+        date = row["销售日期"]
 
         key: str = "@@".join([date, quality_regulation, row["批号"]])
 

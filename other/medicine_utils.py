@@ -620,7 +620,7 @@ class DruggcWeb:
             self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
         if end_date is not None:
             element = self.driver.find_element(By.ID, "endCreateTime")
-            self.driver.execute_script("arguments[0].value = arguments[1]", element, start_date)
+            self.driver.execute_script("arguments[0].value = arguments[1]", element, end_date)
         if start_date is not None or end_date is not None:
             ele = WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='查询']")))
             ele.click()
