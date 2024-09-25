@@ -348,7 +348,9 @@ class INCAWeb:
             WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "but_con")))
             self.driver.find_element(By.ID, "but_con").click()
             WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
-            self.driver.find_element(By.XPATH, "//input[@value='shijian']").click()
+            btn = self.driver.find_element(By.XPATH, "//input[@value='shijian']")
+            if not btn.is_selected():
+                btn.click()
             start_element = self.driver.find_element(By.NAME, "startdate")
             self.driver.execute_script("arguments[0].value = arguments[1]", start_element, start_date)
             end_element = self.driver.find_element(By.NAME, "enddate")
@@ -525,7 +527,7 @@ class TCWeb:
 
 class DruggcWeb:
     """片仔癀宏仁医药有限公司网站的数据抓取"""
-    url = r"http://117.29.176.58:8860/drugqc/home/login?type=flowLogin"
+    url = r"https://zlcx.hrpzh.com/drugqc/home/login?type=flowLogin"
 
     def __init__(self, driver, captcha, download_path) -> None:
         self.path = download_path

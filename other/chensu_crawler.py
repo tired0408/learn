@@ -456,17 +456,17 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
             return
         print("关闭浏览器")
         driver.quit()
-    if len(websites_by_code) != 0:
-        print("抓取有验证码的网站数据")
-        sock = CaptchaSocketServer()
-        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
-        url2class: Dict[str, WebAbstract] = {
-            TCWeb.url: TCWebCustom(driver, sock),
-            DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
-        }
-        crawler_general(websites_by_code, url2class)
-        print("关闭浏览器")
-        driver.quit()
+    # if len(websites_by_code) != 0:
+    #     print("抓取有验证码的网站数据")
+    #     sock = CaptchaSocketServer()
+    #     driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
+    #     url2class: Dict[str, WebAbstract] = {
+    #         TCWeb.url: TCWebCustom(driver, sock),
+    #         DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
+    #     }
+    #     crawler_general(websites_by_code, url2class)
+    #     print("关闭浏览器")
+    #     driver.quit()
 
 
 def main(path, is_deliver):
@@ -492,4 +492,5 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--deliver", action="store_true", help="是否导出发货分析表，默认库存导入表")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
+    opt["deliver"] = True
     main(opt["path"], opt["deliver"])
