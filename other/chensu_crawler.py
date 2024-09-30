@@ -176,7 +176,9 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         rd = collections.defaultdict(lambda: collections.defaultdict(int))
         for product_name, amount, _ in super().get_inventory():
             id = GOL.get_id(client_name, product_name)
-            if "人胰岛素注射液" in product_name:
+            if "胰岛素" in product_name and "支" in product_name:
+                amount = amount * 2
+            if "盐酸布比卡因注射液" and "支" in product_name:
                 amount = amount * 2
             rd[id]["本期库存*"] += amount
         return rd
@@ -189,14 +191,16 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         datas = super().purchase_sale_stock(start_date, end_date)
         for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
-            if "人胰岛素注射液" in product_name:
+            if "胰岛素" in product_name and "支" in product_name:
                 sales = sales * 2
+            if "盐酸布比卡因注射液" and "支" in product_name:
+                amount = amount * 2
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
         datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, _, sales, _ in datas:
             id = GOL.get_id(client_name, product_name)
-            if "人胰岛素注射液" in product_name:
+            if "胰岛素" in product_name and "支" in product_name:
                 sales = sales * 2
             rd[id]["当月销售数量"] += sales
         return calculate_turnover(rd)
@@ -209,7 +213,9 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         inventory_list = super().get_inventory()
         for product_name, amount, _ in inventory_list:
             id = GOL.get_id(client_name, product_name)
-            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                amount = amount * 2
+            if "胰岛素" in product_name and "支" in product_name:
                 amount = amount * 2
             rd[id]["本期库存*"] += amount
         return rd
@@ -222,14 +228,18 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         sales_list = super().get_sales(start_date, end_date)
         for product_name, amount in sales_list:
             id = GOL.get_id(client_name, product_name)
-            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                amount = amount * 2
+            if "胰岛素" in product_name and "支" in product_name:
                 amount = amount * 2
             rd[id]["近3个月月均销量"] += amount
             rd[id]["备注"] = user
         sales_list = super().get_sales(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, amount in sales_list:
             id = GOL.get_id(client_name, product_name)
-            if "外用红色诺卡氏菌细胞壁骨架" in product_name or "胰岛素" in product_name:
+            if "外用红色诺卡氏菌细胞壁骨架" in product_name:
+                amount = amount * 2
+            if "胰岛素" in product_name and "支" in product_name:
                 amount = amount * 2
             rd[id]["当月销售数量"] += amount
         return calculate_turnover(rd)
