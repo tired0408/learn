@@ -9,7 +9,7 @@ import calendar
 import traceback
 import xlwings as xw
 import pandas as pd
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from abc import ABC, abstractmethod
 from selenium.webdriver import Chrome
 from selenium.webdriver.common.by import By
@@ -23,7 +23,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from typing import Dict, List
 from datetime import timedelta, date, datetime
 from openpyxl import load_workbook
-from openpyxl.utils.cell import get_column_letter
+from openpyxl.utils.cell import get_column_letter, column_index_from_string
 warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
 
 
@@ -164,8 +164,8 @@ class GetOperateDetail:
         row2 = data.iloc[2]
         row3 = data.iloc[3]
         row4 = data.iloc[4]
-        ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）")
-        dianping_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信")
+        ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）", is_must=False)
+        dianping_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信", is_must=False)
         cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币")
         eat_in_i_list = get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)
         eat_in_i_list = list(range(eat_in_i_list[0], eat_in_i_list[1]))
@@ -185,11 +185,11 @@ class GetOperateDetail:
             day_data.cash = row[cach_i + 1]
             day_data.wechat = row[wechat_i + 1]
             day_data.eat_in = sum(list_generate(eat_in_i_list, row))
-            day_data.ele_me = row[ele_me_i + 1]
-            day_data.dianping = row[dianping_i + 1]
+            day_data.ele_me = row[ele_me_i + 1] if ele_me_i is not None else 0 
+            day_data.dianping = row[dianping_i + 1] if dianping_i is not None else 0 
             day_data.ele_me_free = row[ele_me_free_i + 1]
             day_data.other_free = row[other_free_i + 1]
-            day_data.pubilc_relation_income = 0 if pubilc_relation_income_i is None else row[pubilc_relation_income_i + 1]
+            day_data.pubilc_relation_income = row[pubilc_relation_income_i + 1] if pubilc_relation_income_i is not None else 0
 
     def read_general_collection(self):
         """读取综合收款统计表的相关数据"""
@@ -375,9 +375,17 @@ class DadaCrawler(WebCrawler):
         # 跳转到下载页面
         ele = WebDriverWait(self._driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[text()=' 订单报表']/..")))
         if "active" not in ele.get_attribute("class"):
+            print("展开订单列表")
             ele.click()
-        ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.XPATH, ".//a[text()='下载列表']/..")))
-        ele.click()
+        ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.XPATH, ".//a[text()='下载列表']")))
+        for i in range(5):
+            ele.click()
+            time.sleep(1)
+            if "active" in ele.get_attribute("class"):
+                break
+            print("点击下载列表出现问题，重新点击")
+        else:
+            raise Exception("点击下载列表错误")
         try:
             WebDriverWait(self._driver, 10).until(EC.visibility_of(load_icon))
         except TimeoutException:
@@ -391,6 +399,7 @@ class DadaCrawler(WebCrawler):
 
     def __download_file(self):
         # 定位到所需要下载的那一行
+        WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[text()='申请日期']")))
         now_str = date.today().strftime("%Y-%m-%d")
         true_content = f"(20{GOL.days[0].replace('.', '-')} ~ 20{GOL.days[-1].replace('.', '-')})"
         tr_ele_list = self._driver.find_elements(By.XPATH, f"//div[text()='{now_str}']/../..")
@@ -404,6 +413,7 @@ class DadaCrawler(WebCrawler):
                 print("下载报表未生成完毕,等待1分钟后刷新")
                 time.sleep(60)
                 self._driver.refresh()
+                time.sleep(3)
                 return False
             break
         else:
@@ -562,12 +572,6 @@ class MeiTuanCrawler(WebCrawler):
         iframe_url = '/web/member/statistic/member-increase#/'
         download_name = "会员新增分析"
         save_name = "会员新增情况统计表"
-        # 收缩导航
-        self._driver.switch_to.default_content()
-        ele = WebDriverWait(self._driver, 30).until(EC.element_to_be_clickable((By.ID, "cs-entry-icon")))
-        if "cs-entry-logo_unfolded" in ele.get_attribute("class"):
-            ele.click()
-            WebDriverWait(self._driver, 30).until(lambda d: "cs-entry-logo_folded" in ele.get_attribute("class"))
         # 进入模块
         module = self.__enter_main_module("营销中心")
         submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
@@ -810,6 +814,16 @@ class MeiTuanCrawler(WebCrawler):
 
     def __toggle_old(self):
         """切换到旧版本:会员新增情况统计表的功能"""
+        # 收缩导航
+        self._driver.switch_to.default_content()
+        ele = WebDriverWait(self._driver, 30).until(EC.element_to_be_clickable((By.ID, "cs-entry-icon")))
+        if "cs-entry-logo_unfolded" in ele.get_attribute("class"):
+            ele.click()
+            WebDriverWait(self._driver, 30).until(lambda d: "cs-entry-logo_folded" in ele.get_attribute("class"))
+        pattern = (By.XPATH, f".//iframe[@data-current-url='/web/member/statistic/member-increase#/']")
+        WebDriverWait(self._driver, 60).until(EC.visibility_of_element_located(pattern))
+        iframe = self._driver.find_element(*pattern)
+        self._driver.switch_to.frame(iframe)
         c1 = EC.visibility_of_element_located((By.XPATH, "//span[text()='切换回老版']"))
         c2 = EC.visibility_of_element_located((By.XPATH, "//span[text()='切换回新版']"))
         version = WebDriverWait(self._driver, 60).until(EC.any_of(c1, c2))
@@ -831,7 +845,7 @@ class ElemeData:
     def del_useless_sheet(self):
         """删除没用的分表"""
         for name in self.wb.sheetnames:
-            if name in ["账单汇总", "外卖订单明细", "保险相关业务账单明细", "赔偿单"]:
+            if name in ["账单汇总", "外卖账单明细", "抖音渠道佣金明细","保险相关业务账单明细", "赔偿单"]:
                 continue
             print(f"删除分表:{name}")
             sheet = self.wb[name]
@@ -843,14 +857,14 @@ class ElemeData:
         header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
         assert header == ['结算入账ID', '门店ID', '门店名称', '账单日期', '结算金额', '结算日期', '账单类型']
         insert_data = []
-        # 删除行
+        # 删除行，仅保留外卖相关的数据
         i = 1
         while True:
             i += 1
             if i > ws.max_row:
                 break
             bill_type = ws.cell(i, 7).value
-            if bill_type == "外卖单":
+            if "外卖" == bill_type:
                 continue
             ws.delete_rows(i)
             i -= 1
@@ -863,21 +877,22 @@ class ElemeData:
         for row in insurance_ws.iter_rows(min_row=2, values_only=True):
             date_str = row[date_i]
             amount = row[amount_i]
-            insurance_data[date_str] = amount
-        insert_data.append(["保险金额", insurance_data])
+            insurance_data[date_str] = Decimal(amount)
+        if len(insurance_data) > 0:
+            insert_data.append(["保险金额", insurance_data])
         # 提取抖音渠道佣金明细的数据
         tiktok_ws = self.get_ws("抖音渠道佣金明细")
         if tiktok_ws.max_row > 1:
-            header = [ws.cell(1, i).value for i in range(1, tiktok_ws.max_column + 1)]
+            header = [tiktok_ws.cell(1, i).value for i in range(1, tiktok_ws.max_column + 1)]
             date_i = header.index("账单日期")
             amount_i = header.index("结算金额")
             tiktok_data = {}
             for row in tiktok_ws.iter_rows(min_row=2, values_only=True):
                 date_str = row[date_i]
                 amount = row[amount_i]
-                tiktok_data[date_str] = amount
+                tiktok_data[date_str] = amount + tiktok_data.get(date_str, 0)
             insert_data.append(["抖音渠道佣金", tiktok_data])
-        # 插入列，并填入数据
+        # 插入列，并填入保险金额和抖音渠道佣金的数据
         for j, datas in enumerate(insert_data):
             name, values = datas
             col_i = 6 + j
@@ -888,20 +903,16 @@ class ElemeData:
                 if date_str not in values:
                     continue
                 ws.cell(i, col_i, values.pop(date_str))
-            assert len(values) == 0
-        # 计算总和
-        col_i = 6 + len(insert_data)
-        ws.insert_cols(col_i, 1)
-        ws.cell(1, col_i, "结算金额合计")
-        for i in range(2, ws.max_row + 1):
-            ws.cell(i, col_i, f"=SUM(E{i}:{get_column_letter(col_i - 1)}{i})")
-        # 最后一行插入合计行
+            if len(values) > 0:
+                raise Exception("账单汇总表的外卖类型数据不全")
+        # 计算总和,并在最后一行插入合计行
         sum_row_i = ws.max_row + 1
         ws.cell(sum_row_i, 1, "合计")
-        for i in range(5, 7 + len(insert_data)):
-            range_start = f"{get_column_letter(i)}2"
-            range_end = f"{get_column_letter(i)}{sum_row_i - 1}"
-            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")
+        for i in range(1, ws.max_column+1):
+            col_str = get_column_letter(i)
+            range_start = f"{col_str}2"
+            range_end = f"{col_str}{sum_row_i - 1}"
+            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")     
 
     def get_ws(self, name):
         """获取工作表,排除空格等障碍"""
@@ -910,31 +921,36 @@ class ElemeData:
                 return self.wb[sheet_name]
 
     def take_out(self):
-        """处理外卖订单明细分表"""
-        ws = self.wb["外卖订单明细"]
-        assert ws.cell(1, 12).value == "结算金额"
-        assert ws.cell(1, 15).value == "菜价"
-        assert ws.cell(1, 17).value == "技术服务费"
-        assert ws.cell(1, 25).value == "智能满减津贴"
-        assert ws.cell(1, 29).value == "商户配送费"
-        assert ws.cell(1, 43).value == "商户活动补贴"
-        assert ws.cell(1, 46).value == "商户配送费活动补贴"
-
-        # 插入两列
-        ws.insert_cols(13, 2)
-        # 计算结算金额
-        ws.cell(1, 13, "结算")
+        """处理外卖账单明细分表"""
+        ws = self.wb["外卖账单明细"]
+        header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
+        # 计算结算金额并插入
+        settle_indexs = ["P", "Q", "S", "AC", "AD", "AG", "AX", "AY", "BA", "BR", "BN"]
+        col_i = header.index("结算金额") + 2
+        ws.insert_cols(col_i, 1)
+        ws.cell(1, col_i, "结算")
         for i in range(2, ws.max_row + 1):
-            ws.cell(i, 13, f"=Q{i}+AE{i}+AS{i}+S{i}+AV{i}+AA{i}")
-        # 计算差额
-        ws.cell(1, 14, "差额")
+            value = "="
+            for si in settle_indexs:
+                value += f"{si}{i}+"
+            value = value[:-1]
+            ws.cell(i, col_i, value)
+        # 计算差额并插入
+        col_i = header.index("结算金额") + 3
+        ws.insert_cols(col_i, 1)
+        ws.cell(1, col_i, "差额")
         for i in range(2, ws.max_row + 1):
-            ws.cell(i, 14, f"=M{i}-L{i}")
-        # 复制差额不为0的数据到新表
+            ws.cell(i, col_i, f"=K{i}-J{i}")    
+        # 复制差额不为0的数据到新表(赔偿单)
         compensate_data = []
         for row in ws.iter_rows(min_row=2, values_only=True):
-            balance = Decimal(str(row[16])) + Decimal(str(row[18])) + Decimal(str(row[26])) + Decimal(str(row[30])) \
-                + Decimal(str(row[44])) + Decimal(str(row[47])) - Decimal(str(row[11]))
+            balance = 0
+            for si in settle_indexs:
+                try:
+                    balance += Decimal(str(row[column_index_from_string(si) - 1]))
+                except InvalidOperation:
+                    continue
+            balance -= Decimal(str(row[column_index_from_string("J") - 1]))
             if balance == Decimal(str(0)):
                 continue
             compensate_data.append(row)
@@ -947,14 +963,21 @@ class ElemeData:
                     compensate_ws.cell(i, j, value)
                 compensate_ws.cell(i, 13, f"=Q{i}+AE{i}+AS{i}+S{i}+AV{i}+AA{i}")
                 compensate_ws.cell(i, 14, f"=M{i}-L{i}")
-        # 计算合计
+        # 调整EXCEL的部分数据格式，不然没法正确求和
+        header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
+        for name in ["商品金额", "技术服务费", "时段收费", "距离收费", "价格收费", "商家活动补贴", "商家代金券补贴", "智能满减津贴", "打包费", 
+                     "商家配送费活动补贴", "商家呼单小费", "先享后付服务费"]:
+            col_i = header.index(name) + 1
+            for i in range(2, ws.max_row+1):
+                ws.cell(i, col_i, Decimal(ws.cell(i, col_i).value))
+        # 最后一行新增合计数
         sum_row_i = ws.max_row + 1
         ws.cell(sum_row_i, 1, "合计")
-        for i in range(13, ws.max_column - 1):
+        for i in range(1, ws.max_column + 1):
             col_str = get_column_letter(i)
             range_start = f"{col_str}2"
             range_end = f"{col_str}{sum_row_i - 1}"
-            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")
+            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")    
 
 
 class DaDaAutotrophy:
@@ -1091,38 +1114,56 @@ class TalkOutData:
         """汇总饿了么的数据"""
         with xw.App(visible=False) as app:
             with app.books.open(GOL.save_path.eleme_bill) as wb:
-                ws = wb.sheets["外卖订单明细"]
+                ws = wb.sheets["外卖账单明细"]
                 last_cell = ws.used_range.last_cell
                 max_row, max_col = last_cell.row, last_cell.column
                 header: List = ws[f"A1:{get_column_letter(max_col)}1"].value
-                should_income = ws[f"{get_column_letter(header.index('菜价') + 1)}{max_row}"].value
+                # 应收
+                should_income = ws[f"{get_column_letter(header.index('商品金额') + 1)}{max_row}"].value
+                # 抽佣服务费
                 service_cost = ws[f"{get_column_letter(header.index('技术服务费') + 1)}{max_row}"].value
-                time_raise = ws[f"{get_column_letter(header.index('履约-时段加价') + 1)}{max_row}"].value
-                distance_raise = ws[f"{get_column_letter(header.index('履约-距离加价') + 1)}{max_row}"].value
-                price_raise = ws[f"{get_column_letter(header.index('履约-价格加价') + 1)}{max_row}"].value
-                activty_subsidy = ws[f"{get_column_letter(header.index('商户活动补贴') + 1)}{max_row}"].value +\
-                    ws[f"{get_column_letter(header.index('智能满减津贴') + 1)}{max_row}"].value
-                chargeback = -ws[f"{get_column_letter(header.index('差额') + 1)}{max_row}"].value
-                other = ws[f"{get_column_letter(header.index('商户配送费活动补贴') + 1)}{max_row}"].value
+                # 时段加价
+                time_raise = ws[f"{get_column_letter(header.index('时段收费') + 1)}{max_row}"].value * 0.85
+                # 距离加价
+                distance_raise = ws[f"{get_column_letter(header.index('距离收费') + 1)}{max_row}"].value * 0.85
+                # 价格加价
+                price_raise = ws[f"{get_column_letter(header.index('价格收费') + 1)}{max_row}"].value * 0.85
+                # 商户承担活动补贴
+                activty_subsidy = sum([ws[f"{get_column_letter(header.index(name) + 1)}{max_row}"].value for name in ["商家活动补贴", "商家代金券补贴", "智能满减津贴"]])
+                # 部分退单-申请退单金额
+                chargeback = -ws[f"{get_column_letter(header.index('差额') + 1)}{max_row}"].value + ws[f"{get_column_letter(header.index('打包费') + 1)}{max_row}"].value
+                # 其他(商家自行配送补贴)
+                other = sum([ws[f"{get_column_letter(header.index(name) + 1)}{max_row}"].value for name in ["商家配送费活动补贴", "商家呼单小费"]])
+                # 先享后付服务费
+                eat_now_pay_later = ws[f"{get_column_letter(header.index('先享后付服务费') + 1)}{max_row}"].value
 
                 ws = wb.sheets["账单汇总"]
                 last_cell = ws.used_range.last_cell
                 max_row, max_col = last_cell.row, last_cell.column
                 header: List = ws[f"A1:{get_column_letter(max_col)}1"].value
-                insurance = -ws[f"{get_column_letter(header.index('保险金额') + 1)}{max_row}"].value
+                # 保险费
+                insurance = 0
+                if "保险费" in header:
+                    insurance = insurance + ws[f"{get_column_letter(header.index('保险金额') + 1)}{max_row}"].value
+                if "抖音渠道佣金" in header:
+                    insurance = insurance - ws[f"{get_column_letter(header.index('抖音渠道佣金') + 1)}{max_row}"].value 
 
         ws = self.wb[f"{GOL.last_month.year}年饿了么"]
-        row_i = [ws.cell(i, 1).value.strftime("%y.%m") for i in range(4, 16)]
-        row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 4
-        ws.cell(row_i, 2, should_income)  # 应收
-        ws.cell(row_i, 3, service_cost)  # 抽佣服务费
-        ws.cell(row_i, 4, time_raise)  # 时段加价
-        ws.cell(row_i, 5, distance_raise)  # 距离加价
-        ws.cell(row_i, 6, price_raise)  # 价格加价
-        ws.cell(row_i, 7, activty_subsidy)  # 商户承担活动补贴
-        ws.cell(row_i, 8, chargeback)  # 部分退单-申请退单金额
-        ws.cell(row_i, 9, other)  # 其他(商家自行配送补贴)
-        ws.cell(row_i, 11, insurance)  # 保险费
+        if GOL.store_name == TM.sweet:
+            row_i = [str(ws.cell(i, 1).value) for i in range(17, 23)]
+        else:
+            row_i = [str(ws.cell(i, 1).value) for i in range(4, 16)]
+        row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 17
+        ws.cell(row_i, 2, should_income)  
+        ws.cell(row_i, 3, service_cost)  
+        ws.cell(row_i, 4, time_raise)  
+        ws.cell(row_i, 5, distance_raise)  
+        ws.cell(row_i, 6, price_raise)  
+        ws.cell(row_i, 7, activty_subsidy)  
+        ws.cell(row_i, 8, chargeback)  
+        ws.cell(row_i, 9, other)  
+        ws.cell(row_i, 10, eat_now_pay_later)
+        ws.cell(row_i, 12, insurance) 
 
     def collect_autotrophy(self):
         """汇总自营外卖的数据"""
@@ -1156,7 +1197,7 @@ class TalkOutData:
                 business_freight += ws[f"{get_column_letter(header.index('运费账户消耗') + 1)}{max_row}"].value
 
         ws = self.wb[f"{GOL.last_month.year}年自营外卖"]
-        row_i = [ws.cell(i, 1).value.strftime("%Y.%m") for i in range(3, 15)]
+        row_i = [str(ws.cell(i, 1).value) for i in range(3, 15)]
         row_i = row_i.index(GOL.last_month.strftime("%Y.%m")) + 3
         ws.cell(row_i, 2, order_num)  # 订单数量
         ws.cell(row_i, 3, member_consume)  # 会员消费订单数
@@ -1176,6 +1217,10 @@ def get_3row_index(row1: pd.Series, row2: pd.Series, row3: pd.Series, name1, nam
     row2_drop = row2.iloc[n1_s:n1_e].dropna()
     row2_values = list(row2_drop.values)
     row2_indexs = [*list(row2_drop.index), len(row2)]
+    if name2 not in row2_values:
+        if is_must:
+            raise ValueError(f"{name2} not in {row2_values}")
+        return None
     n2_i = row2_values.index(name2)
     n2_s, n2_e = row2_indexs[n2_i], row2_indexs[n2_i + 1]
     if name3 is None:
@@ -1302,7 +1347,7 @@ def eleme_main():
     eleme_data = ElemeData()
     print("账单汇总分表的处理")
     eleme_data.billing_summary()
-    print("处理外卖订单明细分表")
+    print("处理外卖账单明细分表")
     eleme_data.take_out()
     print("删除不保留的分表")
     eleme_data.del_useless_sheet()
@@ -1339,7 +1384,7 @@ def take_out_main():
     """外卖收入汇总表的主方法"""
     take_out = TalkOutData()
     print("汇总饿了么的数据")
-    # take_out.collect_eleme()
+    take_out.collect_eleme()
     print("汇总自营外卖的数据")
     take_out.collect_autotrophy()
     print("保存文件")
@@ -1358,9 +1403,17 @@ def main():
     save_folder = os.path.join(os.path.dirname(operate_detail_template), "输入数据")
     date_str = GOL.last_month.strftime("%Y%m")
     # 输入文件地址, Bread（湖明店）,Bread（瑞景店）,Sweet
-    GOL.store_name = TM.sweet
-    GOL.save_path.take_out = os.path.join(save_folder, f"{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
-    GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{date_str}.xlsx")
+    input_value_name = os.listdir(save_folder)[0]
+    if "湖明" in input_value_name:
+        GOL.store_name = TM.huming
+    elif "瑞景" in input_value_name:
+        GOL.store_name = TM.ruijing
+    elif "Sweet" in input_value_name:
+        GOL.store_name = TM.sweet
+    else:
+        raise Exception("输入的文件名称存在问题")
+    GOL.save_path.take_out = os.path.join(save_folder, f"1.{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
+    GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{GOL.last_month.strftime('%Y.%m')}.xlsx")
     # 其他文件地址
     GOL.save_path.operate_detail = os.path.join(save_folder, f"{GOL.store_name}营业明细表{date_str}.xlsx",)
     GOL.save_path.synthesize_operate = os.path.join(save_folder, f"{GOL.store_name}综合营业统计{date_str}.xlsx")
@@ -1374,11 +1427,11 @@ def main():
     crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
     # 汇总营业明细表
     operation_detail_main(operate_detail_template)
-    # 饿了么导出数据的处理
+    # 饿了么导出数据的处理-账单明细表
     eleme_main()
-    # 美团自营外卖表的处理
+    # 自营外卖(美团后台)表处理
     meituan_autotrophy_main()
-    # 达达门店订单明细的处理
+    # 自营外卖(达达)表处理
     dada_autotrophy_main()
     # 汇总外卖收入表
     take_out_main()
