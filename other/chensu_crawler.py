@@ -179,7 +179,7 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
             if "胰岛素" in product_name and "支" in product_name:
                 amount = amount * 2
             if "盐酸布比卡因注射液" and "支" in product_name:
-                amount = amount * 2
+                amount = amount * 5
             rd[id]["本期库存*"] += amount
         return rd
 
@@ -194,7 +194,7 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
             if "胰岛素" in product_name and "支" in product_name:
                 sales = sales * 2
             if "盐酸布比卡因注射液" and "支" in product_name:
-                amount = amount * 2
+                sales = sales * 5
             rd[id]["近3个月月均销量"] += sales
             rd[id]["备注"] = user
         datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
@@ -466,17 +466,17 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
             return
         print("关闭浏览器")
         driver.quit()
-    # if len(websites_by_code) != 0:
-    #     print("抓取有验证码的网站数据")
-    #     sock = CaptchaSocketServer()
-    #     driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
-    #     url2class: Dict[str, WebAbstract] = {
-    #         TCWeb.url: TCWebCustom(driver, sock),
-    #         DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
-    #     }
-    #     crawler_general(websites_by_code, url2class)
-    #     print("关闭浏览器")
-    #     driver.quit()
+    if len(websites_by_code) != 0:
+        print("抓取有验证码的网站数据")
+        sock = CaptchaSocketServer()
+        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
+        url2class: Dict[str, WebAbstract] = {
+            TCWeb.url: TCWebCustom(driver, sock),
+            DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
+        }
+        crawler_general(websites_by_code, url2class)
+        print("关闭浏览器")
+        driver.quit()
 
 
 def main(path, is_deliver):
