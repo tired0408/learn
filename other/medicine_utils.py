@@ -77,9 +77,16 @@ def start_socket():
 
 
 def analyze_website(path, ignore_names):
-    """分析网站数据"""
+    """分析网站数据
+    return: list
+        1. 需要验证码的网站地址列表
+        2. 不需要验证码的网站地址列表
+        3. 客户名称列表
+
+    """
     websites = pd.read_excel(path)
     websites_by_code, websites_no_code = [], []
+    clients_names = []
     # 网站的验证码情况
     code_condition = {
         SPFJWeb.url: False,
@@ -100,11 +107,13 @@ def analyze_website(path, ignore_names):
         if data["client_name"] in ignore_names:
             print(f"忽视的客户名称:{data['client_name']},{data['user']}")
             continue
+        
+        clients_names.append(data["client_name"])
         if code_condition[data["website_url"]]:
             websites_by_code.append(data)
         else:
             websites_no_code.append(data)
-    return websites_by_code, websites_no_code
+    return websites_by_code, websites_no_code, clients_names
 
 
 def get_url_success(driver: Chrome, url, element_type, element_value):
@@ -183,7 +192,7 @@ class SPFJWeb:
             inventory = int(elements[7].text)
             return [product_name, purchase, sales, inventory]
         rd = self.get_table_data(deal_func, "进销存汇总", start_date=start_date, end_date=end_date)
-        print(f"[国控福建]进销存数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[国控福建]进销存数据抓取已完成, 日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_inventory(self, start_date=None):
@@ -198,7 +207,7 @@ class SPFJWeb:
             code = str(elements[6].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_func, "库存数据", start_date)
-        print(f"[国控福建]库存数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[国控福建]库存数据抓取已完成, 日期:{start_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_table_data(self, deal_func, table_type, start_date=None, end_date=None):
@@ -293,7 +302,7 @@ class INCAWeb:
             product_name = product_name.replace(" ", "")
             amount = int(row["数量"])
             rd.append([product_name, amount])
-        print(f"[片仔癀漳州]销售数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[片仔癀漳州]销售数据抓取已完成, 日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
         os.remove(file_path)
         return rd
 
@@ -409,7 +418,7 @@ class LYWeb:
             inventory = int(float(elements[5].text))
             return [product_name, purchase, sales, inventory]
         rd = self.get_table_data(deal_func, "进销存汇总表", start_date, end_date)
-        print(f"[鹭燕]进销存数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[鹭燕]进销存数据抓取已完成,日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_table_data(self, deal_func, table_type, start_date=None, end_date=None):
@@ -521,7 +530,7 @@ class TCWeb:
                 rd.append([product_name, sales])
         except NoSuchElementException:
             print("[同春医药]无流向数据")
-        print(f"[同春医药]流向数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[同春医药]流向数据抓取已完成,日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
         return rd
 
 
@@ -593,7 +602,7 @@ class DruggcWeb:
             return [product_name, amount]
         self.__search_data("进货明细", start_date)
         rd = self.__get_data_by_excel(deal_restock, "进货明细")
-        print(f"[片仔癀宏仁医药]进货数据抓取已完成，共抓取{len(rd)}条数据")
+        print(f"[片仔癀宏仁医药]进货数据抓取已完成, 日期:{start_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_sales(self, start_date, end_date=None):

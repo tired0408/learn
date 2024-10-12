@@ -334,7 +334,7 @@ def main(path, week):
     print("读取断点数据")
     breakpoint_names = read_breakpoint()
     print("针对网站数据进行分类")
-    websites_by_code, websites_no_code = analyze_website(GOL.websites_path, breakpoint_names)
+    websites_by_code, websites_no_code, _ = analyze_website(GOL.websites_path, breakpoint_names)
     print("从网站上爬取数据")
     crawler_websites_data(websites_by_code, websites_no_code)
     print("定义数据写入类")
