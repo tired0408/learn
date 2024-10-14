@@ -642,13 +642,14 @@ def get_deliver_goods(date_value):
     return rd
 
 
-def main(path, start_date):
+def main(path, start_date, ignore_names):
     print("设置全局数据")
     GOL.set_data(path, start_date)
     print("读取断点数据")
     breakpoint_names, breakpoint_datas = read_breakpoint()
     print("针对网站数据进行分类")
-    websites_by_code, websites_no_code, client_names = analyze_website(GOL.websites_path, breakpoint_names)
+    ignore_names.extend(breakpoint_names)
+    websites_by_code, websites_no_code, client_names = analyze_website(GOL.websites_path, ignore_names)
     print("读取数据库信息")
     read_production_database(client_names)
     print("从网站上爬取所需数据")
@@ -664,6 +665,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--date", type=str, default="12345678", help="上次统计的日期时间")
+    parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
-    opt["date"] = "20241008"
-    main(opt["path"], opt["date"])
+    if opt["topo"]:
+        names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"]
+    # opt["date"] = "20241008"
+    main(opt["path"], opt["date"], names)
