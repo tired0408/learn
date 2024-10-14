@@ -164,7 +164,7 @@ class CaptchaSocketServer:
 
 
 class SPFJWeb:
-    """国控福建网站的数据抓取"""
+    """国控系网站的数据抓取"""
     url = r"https://www.sinopharm-fj.com/spfj/flows/"
 
     def __init__(self, driver) -> None:
@@ -177,7 +177,7 @@ class SPFJWeb:
         Select(self.driver.find_element(By.ID, "own")).select_by_visible_text(district_name)
         self.driver.find_element(By.ID, "login").click()
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "butn")))
-        print(f"[国控福建]{user}用户已登录")
+        print(f"[国控系]{user}用户已登录")
 
     def purchase_sale_stock(self, start_date=None, end_date=None):
         """
@@ -192,7 +192,7 @@ class SPFJWeb:
             inventory = int(elements[7].text)
             return [product_name, purchase, sales, inventory]
         rd = self.get_table_data(deal_func, "进销存汇总", start_date=start_date, end_date=end_date)
-        print(f"[国控福建]进销存数据抓取已完成, 日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
+        print(f"[国控系]进销存数据抓取已完成, 日期:{start_date}-{end_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_inventory(self, start_date=None):
@@ -207,7 +207,7 @@ class SPFJWeb:
             code = str(elements[6].text)
             return [product_name, amount, code]
         rd = self.get_table_data(deal_func, "库存数据", start_date)
-        print(f"[国控福建]库存数据抓取已完成, 日期:{start_date}，共抓取{len(rd)}条数据")
+        print(f"[国控系]库存数据抓取已完成, 日期:{start_date}，共抓取{len(rd)}条数据")
         return rd
 
     def get_table_data(self, deal_func, table_type, start_date=None, end_date=None):

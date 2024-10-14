@@ -642,7 +642,7 @@ def get_deliver_goods(date_value):
     return rd
 
 
-def main(path, start_date, ignore_names):
+def main(path, start_date, ignore_names: List):
     print("设置全局数据")
     GOL.set_data(path, start_date)
     print("读取断点数据")
