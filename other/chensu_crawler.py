@@ -72,18 +72,25 @@ class SaveData:
 
     def cal_month_sales_average(self, three_month_sales):
         """计算月均销量"""
-        self.month_sales_average = round(three_month_sales / 3)
+        self.month_sales_average = f"{three_month_sales}/3"
+        return round(three_month_sales) / 3
     
     def cal_turnover_days(self, average, inventory):
         """计算周转天数"""
         if average != 0:
             self.inventory_turnover_days = round(inventory / average * 30)
+            return round(inventory / average * 30)
         elif inventory > 0:
             self.inventory_turnover_days = -1
+            return -1
+        
 
     def cal_on_road(self, restock, inventory, last_inventory, sales):
         """计算在途数量"""
-        self.on_road = restock - inventory + last_inventory - sales
+        amount = restock - inventory + last_inventory - sales
+        if amount != 0:
+            self.on_road = f"{restock}-{inventory}+{last_inventory}-{sales}"
+        return amount
 
 class WebData:
     """网站数据"""
@@ -160,8 +167,8 @@ class DataToExcel:
             web_data = web_datas[standard_id]
             data.inventory = web_data.inventory * web_data.conversion_ratio
             data.month_sales = web_data.month_sale * web_data.conversion_ratio
-            data.cal_month_sales_average(web_data.three_month_sale * web_data.conversion_ratio)
-            data.cal_turnover_days(data.month_sales_average, web_data.inventory)
+            average = data.cal_month_sales_average(web_data.three_month_sale * web_data.conversion_ratio)
+            data.cal_turnover_days(average, web_data.inventory)
             data.cal_on_road(web_data.last_on_road + web_data.recent_should_restock, web_data.inventory, web_data.last_inventory,
                              web_data.recent_sale)
         # 读取断点数据
@@ -184,12 +191,12 @@ class DataToExcel:
             self.ws.write(row_i, 3, data.date, date_style)
             self.ws.write(row_i, 4, data.date, date_style)
             if data.on_road is not None:
-                self.ws.write(row_i, 5, data.on_road)
+                self.ws.write(row_i, 5, xlwt.Formula(data.on_road))
             if data.reference is not None:
                 self.ws.write(row_i, 7, data.reference)
             self.ws.write(row_i, 8, data.user)
             self.ws.write(row_i, 9, data.month_sales)
-            self.ws.write(row_i, 10, data.month_sales_average)
+            self.ws.write(row_i, 10, xlwt.Formula(data.month_sales_average))
             if data.inventory_turnover_days is not None:
                 if data.inventory_turnover_days < 0:
                     self.ws.write(row_i, 11, "动销缓慢")
@@ -537,6 +544,9 @@ def get_deliver_goods(date_value):
     print("从EXCEL中读取金蝶软件的相关数据")
     deliver_data = pd.read_excel(GOL.eas_data_path)
     deliver_data = deliver_data[deliver_data["单据状态"] != "保存"]
+    start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
+    end_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    deliver_data = deliver_data[(deliver_data["订单日期"] >= start_date) & (deliver_data["订单日期"] < end_date)]
     for _, row in deliver_data.iterrows():
         rd.append({"客户": row["客户"], "商品名称": row["物料名称"], "数量": row["数量"]})
     print("打开浏览器，读取发送给客户的数据")
@@ -640,5 +650,5 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
     parser.add_argument("-d", "--date", type=str, default="12345678", help="上次统计的日期时间")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
-    opt["date"] = "20240902"
+    opt["date"] = "20241008"
     main(opt["path"], opt["date"])
