@@ -451,7 +451,7 @@ def read_production_database(names):
         GOL.save_datas[data_id] = save_data
         GOL.web_datas[data_id] = web_data
 
-def read_breakpoint() -> Tuple[set, dict[str, SaveData]]:
+def read_breakpoint() -> Tuple[set, Dict[str, SaveData]]:
     """读取断点数据"""
     if not os.path.exists(GOL.save_path):
         print("无断点数据,从头到尾抓取")
@@ -667,7 +667,6 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--date", type=str, default="12345678", help="上次统计的日期时间")
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
-    if opt["topo"]:
-        names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"]
+    names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []
     # opt["date"] = "20241008"
     main(opt["path"], opt["date"], names)
