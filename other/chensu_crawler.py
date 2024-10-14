@@ -67,19 +67,19 @@ class SaveData:
         self.reference = reference  # 参考信息
         self.user = None # 所属账号名称
         self.month_sales = 0  # 当月销售数量
-        self.month_sales_average = 0  # 近3个月月均销量
+        self.month_sales_average = None  # 近3个月月均销量
         self.inventory_turnover_days = None  # 库存周转天数
 
     def cal_month_sales_average(self, three_month_sales):
         """计算月均销量"""
-        self.month_sales_average = f"{three_month_sales}/3"
-        return round(three_month_sales) / 3
+        self.month_sales_average = round(three_month_sales / 3) 
+        return self.month_sales_average
     
     def cal_turnover_days(self, average, inventory):
         """计算周转天数"""
         if average != 0:
             self.inventory_turnover_days = round(inventory / average * 30)
-            return round(inventory / average * 30)
+            return self.inventory_turnover_days
         elif inventory > 0:
             self.inventory_turnover_days = -1
             return -1
@@ -89,7 +89,7 @@ class SaveData:
         """计算在途数量"""
         amount = restock - inventory + last_inventory - sales
         if amount != 0:
-            self.on_road = f"{restock}-{inventory}+{last_inventory}-{sales}"
+            self.on_road = amount
         return amount
 
 class WebData:
@@ -191,12 +191,12 @@ class DataToExcel:
             self.ws.write(row_i, 3, data.date, date_style)
             self.ws.write(row_i, 4, data.date, date_style)
             if data.on_road is not None:
-                self.ws.write(row_i, 5, xlwt.Formula(data.on_road))
+                self.ws.write(row_i, 5, data.on_road)
             if data.reference is not None:
                 self.ws.write(row_i, 7, data.reference)
             self.ws.write(row_i, 8, data.user)
             self.ws.write(row_i, 9, data.month_sales)
-            self.ws.write(row_i, 10, xlwt.Formula(data.month_sales_average))
+            self.ws.write(row_i, 10, data.month_sales_average)
             if data.inventory_turnover_days is not None:
                 if data.inventory_turnover_days < 0:
                     self.ws.write(row_i, 11, "动销缓慢")
@@ -442,7 +442,7 @@ def read_breakpoint() -> Tuple[set, dict[str, SaveData]]:
         print("无断点数据,从头到尾抓取")
         return set(), None
     # 整理格式
-    raw_data = pd.read_excel(GOL.save_path)
+    raw_data = pd.read_excel(GOL.save_path, engine="xlrd")
     if "库存周转天数" in list(raw_data.columns):
         raw_data["库存周转天数"] = pd.to_numeric(raw_data["库存周转天数"], errors='coerce')
     raw_data = raw_data.fillna("")
