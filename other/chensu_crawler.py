@@ -106,7 +106,22 @@ class WebData:
         self.last_inventory = 0  # 上期库存
         self.last_on_road = 0  # 上期在途
 
+    def get_inventory(self):
+        """获取库存"""
+        return self.inventory * self.conversion_ratio
 
+    def get_three_month_sale(self):
+        """获取近3个月销量"""
+        return self.three_month_sale * self.conversion_ratio
+
+    def get_month_sale(self):
+        """获取当月销售数量"""
+        return self.month_sale * self.conversion_ratio
+    
+    def get_recent_sale(self):
+        """获取近期销量"""
+        return self.recent_sale * self.conversion_ratio
+        
 class DataToExcel:
     """将数据转化为EXCEL表格类"""
 
@@ -165,12 +180,12 @@ class DataToExcel:
             if standard_id not in web_datas:
                 continue
             web_data = web_datas[standard_id]
-            data.inventory = web_data.inventory * web_data.conversion_ratio
-            data.month_sales = web_data.month_sale * web_data.conversion_ratio
-            average = data.cal_month_sales_average(web_data.three_month_sale * web_data.conversion_ratio)
-            data.cal_turnover_days(average, web_data.inventory)
-            data.cal_on_road(web_data.last_on_road + web_data.recent_should_restock, web_data.inventory, web_data.last_inventory,
-                             web_data.recent_sale)
+            data.inventory = web_data.get_inventory()
+            data.month_sales = web_data.get_month_sale()
+            average = data.cal_month_sales_average(web_data.get_three_month_sale())
+            data.cal_turnover_days(average, web_data.get_inventory())
+            data.cal_on_road(web_data.last_on_road + web_data.recent_should_restock, web_data.get_inventory(), 
+                             web_data.last_inventory, web_data.get_recent_sale())
         # 读取断点数据
         if breakpoint_data is not None:
             GOL.save_datas.update(breakpoint_data)
