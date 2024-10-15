@@ -161,8 +161,6 @@ class DataToExcel:
         # 处理网站数据，计算所需数据
         for _, data in GOL.save_datas.items():
             standard_id = get_id(data.first_business, data.production_name)
-            if "胰岛素注射液" in standard_id:
-                print(11111111111111)
             if standard_id not in web_datas:
                 continue
             web_data = web_datas[standard_id]
@@ -246,32 +244,32 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         # 获取库存数据,23点更新当天数据
         for product_name, amount, _ in super().get_inventory():
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         if now_date.hour >= 23:
             datas = now_date.strftime("%Y-%m-%d")
             datas = super().purchase_sale_stock(datas, datas)
             for product_name, _, sales, _ in datas:
                 id = get_id(client_name, product_name)
-                rd[id].inventory += sales * rd[id].conversion_ratio
+                rd[id].inventory += sales
         # 获取近三个月销量
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date, end_date)
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].three_month_sale += sales * rd[id].conversion_ratio
+            rd[id].three_month_sale += sales
         # 当月销量
         datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].month_sale += sales * rd[id].conversion_ratio
+            rd[id].month_sale += sales
         # 获取上一次整理日期至今的销售情况
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date, end_date)
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].recent_sale += sales * rd[id].conversion_ratio
+            rd[id].recent_sale += sales
         return rd
 
 
@@ -284,31 +282,31 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         inventory_list = super().get_inventory()
         for product_name, amount, _ in inventory_list:
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         datas = now_date.strftime("%Y-%m-%d")
         datas = super().get_sales(datas, datas)
         for product_name, amount in datas:
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         sales_list = super().get_sales(start_date, end_date)
         for product_name, amount in sales_list:
             id = get_id(client_name, product_name)
-            rd[id].three_month_sale += amount * rd[id].conversion_ratio
+            rd[id].three_month_sale += amount
 
         sales_list = super().get_sales(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, amount in sales_list:
             id = get_id(client_name, product_name)
-            rd[id].month_sale += amount * rd[id].conversion_ratio
+            rd[id].month_sale += amount
         
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_sales(start_date, end_date)
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            rd[id].recent_sale += sales * rd[id].conversion_ratio
+            rd[id].recent_sale += sales
         return rd
 
 
@@ -320,26 +318,26 @@ class LYWebCustom(LYWeb, WebAbstract):
         inventory_list = super().get_inventory()
         for product_name, amount, _ in inventory_list:
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         
         now_date = datetime.datetime.now()
         start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date)
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].three_month_sale += sales * rd[id].conversion_ratio
+            rd[id].three_month_sale += sales
         
         datas = super().purchase_sale_stock(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].month_sale += sales * rd[id].conversion_ratio
+            rd[id].month_sale += sales
         
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date, end_date)
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
-            rd[id].recent_sale += sales * rd[id].conversion_ratio
+            rd[id].recent_sale += sales
         return rd
 
 
@@ -352,31 +350,31 @@ class TCWebCustom(TCWeb, WebAbstract):
         inventory_list = super().get_inventory()
         for product_name, amount in inventory_list:
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         datas = now_date.strftime("%Y-%m-%d")
         datas = super().get_product_flow(datas, datas)
         for product_name, amount in datas:
             id = get_id(client_name, product_name)
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
         
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_product_flow(start_date, end_date)
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            rd[id].three_month_sale += sales * rd[id].conversion_ratio
+            rd[id].three_month_sale += sales
 
         datas = super().get_product_flow(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            rd[id].month_sale += sales * rd[id].conversion_ratio
+            rd[id].month_sale += sales
         
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_product_flow(start_date, end_date)
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            rd[id].recent_sale += sales * rd[id].conversion_ratio
+            rd[id].recent_sale += sales
         return rd
 
 
@@ -389,9 +387,7 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
         inventory_list = super().get_inventory()
         for product_name, amount, _ in inventory_list:
             id = get_id(client_name, product_name)
-            if "复方α-酮酸片" in product_name and id not in rd:
-                rd[id].inventory = GOL.web_datas[id].inventory
-            rd[id].inventory += amount * rd[id].conversion_ratio
+            rd[id].inventory += amount
 
         now_date = datetime.datetime.now()
         d1_end = now_date.replace(day=1) - relativedelta(days=1)
@@ -404,23 +400,19 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
             datas = super().get_sales(start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d"))
             for product_name, sales in datas:
                 id = get_id(client_name, product_name)
-                if "复方α-酮酸片" in product_name and id not in rd:
-                    rd[id].three_month_sale = GOL.web_datas[id].three_month_sale
-                rd[id].three_month_sale += sales * rd[id].conversion_ratio
+                rd[id].three_month_sale += sales
 
         datas = super().get_sales(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            if "复方α-酮酸片" in product_name and id not in rd:
-                rd[id].month_sale = GOL.web_datas[id].month_sale
-            rd[id].month_sale += sales * rd[id].conversion_ratio
+            rd[id].month_sale += sales
         
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_sales(start_date, end_date)
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
-            rd[id].recent_sale += sales * rd[id].conversion_ratio
+            rd[id].recent_sale += sales
         return rd
 
 def get_id(client_name:str, production_name:str):
@@ -453,6 +445,7 @@ def read_production_database(names):
         web_data.conversion_ratio = conversion_ratio
         GOL.save_datas[data_id] = save_data
         GOL.web_datas[data_id] = web_data
+
 
 def read_breakpoint() -> Tuple[set, Dict[str, SaveData]]:
     """读取断点数据"""
@@ -509,7 +502,21 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     print(f"警告：未在产品库找到该产品:{id}")
                     continue
                 GOL.save_datas[id].user = user
-                GOL.web_datas[id] = value
+                web_data = GOL.web_datas[id]
+                if isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id:
+                    web_data.inventory += value.inventory * web_data.conversion_ratio
+                    web_data.month_sale += value.month_sale * web_data.conversion_ratio
+                    web_data.recent_sale += value.recent_sale * web_data.conversion_ratio
+                    web_data.three_month_sale += value.three_month_sale * web_data.conversion_ratio
+                else:
+                    web_data.inventory = value.inventory * web_data.conversion_ratio
+                    web_data.month_sale = value.month_sale * web_data.conversion_ratio
+                    web_data.recent_sale = value.recent_sale * web_data.conversion_ratio
+                    web_data.three_month_sale = value.three_month_sale * web_data.conversion_ratio
+
+
+
+
         except Exception:
             print("-" * 150)
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
@@ -671,5 +678,5 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []
-    opt["date"] = "20241008"
+    # opt["date"] = "20241008"
     main(opt["path"], opt["date"], names)
