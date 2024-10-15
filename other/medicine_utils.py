@@ -354,9 +354,9 @@ class INCAWeb:
             self.driver.find_element(By.ID, "submit_s").click()
         else:
             self.driver.find_element(By.ID, "but_b").click()
-            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "but_con")))
-            self.driver.find_element(By.ID, "but_con").click()
-            WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
+            ele = WebDriverWait(self.driver, 30).until(EC.element_to_be_clickable((By.ID, "but_con")))
+            ele.click()
+            WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "modal-content")))
             btn = self.driver.find_element(By.XPATH, "//input[@value='shijian']")
             if not btn.is_selected():
                 btn.click()
@@ -385,9 +385,7 @@ class LYWeb:
         c1 = EC.element_to_be_clickable((By.CLASS_NAME, "buttonsubmit"))
         btn = WebDriverWait(self.driver, 60).until(c1)
         btn.click()
-        c1 = EC.visibility_of_element_located((By.CLASS_NAME, "buttonsubmit"))
-        WebDriverWait(self.driver, 60).until_not(c1)
-        WebDriverWait(self.driver, 60).until(EC.title_is("鹭燕医药网上查询系统"))
+        WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='注销退出']")))
         print(f"[鹭燕]{user}用户已登录")
 
     def get_inventory(self):
