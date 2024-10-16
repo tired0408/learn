@@ -367,7 +367,7 @@ class LYWeb:
         c1 = EC.element_to_be_clickable((By.CLASS_NAME, "buttonsubmit"))
         btn = WebDriverWait(self.driver, 60).until(c1)
         btn.click()
-        WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='注销退出']")))
+        WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.NAME, "menu")))
         print(f"[鹭燕]{user}用户已登录")
 
     def get_inventory(self):
