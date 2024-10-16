@@ -44,7 +44,7 @@ def select_date_1(start_date: datetime.datetime, end_date:datetime.datetime, sta
     WebDriverWait(start_container, 10).until(lambda ele: not ele.is_displayed())
 
 
-def init_chrome(chromedriver_path, download_path, chrome_path=None, is_proxy=True):
+def init_chrome(chromedriver_path, download_path, user_path=None, chrome_path=None, is_proxy=True):
     """初始化浏览器
     args:
         chromedriver_path: (str); 浏览器驱动的地址
@@ -54,6 +54,8 @@ def init_chrome(chromedriver_path, download_path, chrome_path=None, is_proxy=Tru
     """
     service = Service(chromedriver_path)
     options = Options()
+    if user_path is not None:
+        options.add_argument(f'user-data-dir={user_path}')  # 指定用户数据目录
     if chrome_path is not None:
         options.binary_location = chrome_path
     if is_proxy:
