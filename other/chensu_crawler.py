@@ -19,8 +19,8 @@ from dateutil.relativedelta import relativedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from medicine_utils import init_chrome, analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
-from crawler_util import select_date_1
+from medicine_utils import analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
+from crawler_util import select_date_1, init_chrome
 
 class Golbal:
 
@@ -513,10 +513,6 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     web_data.month_sale = value.month_sale * web_data.conversion_ratio
                     web_data.recent_sale = value.recent_sale * web_data.conversion_ratio
                     web_data.three_month_sale = value.three_month_sale * web_data.conversion_ratio
-
-
-
-
         except Exception:
             print("-" * 150)
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")

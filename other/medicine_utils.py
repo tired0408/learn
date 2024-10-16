@@ -24,24 +24,6 @@ from selenium.webdriver.support import expected_conditions as EC
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-
-def init_chrome(chromedriver_path, download_path, chrome_path=None, is_proxy=True):
-    """初始化浏览器"""
-    service = Service(chromedriver_path)
-    options = Options()
-    if chrome_path is not None:
-        options.binary_location = chrome_path
-    if is_proxy:
-        options.add_argument('--proxy-server=127.0.0.1:8080')
-        options.add_argument('ignore-certificate-errors')
-    options.add_argument('--log-level=3')
-    options.add_experimental_option('prefs', {
-        "download.default_directory": download_path,  # 指定下载目录
-    })
-    driver = Chrome(service=service, options=options)
-    return driver
-
-
 def correct_str(value):
     """修正字符串: 清理无用字符"""
     value = str(value)

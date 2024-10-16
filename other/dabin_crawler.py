@@ -17,7 +17,8 @@ from openpyxl.workbook import Workbook
 from openpyxl.cell.cell import Cell, MergedCell
 from openpyxl.styles import PatternFill
 from openpyxl.utils.cell import get_column_letter
-from medicine_utils import init_chrome, analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
+from medicine_utils import analyze_website, SPFJWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
+from crawler_util import init_chrome
 
 
 class Golbal:
