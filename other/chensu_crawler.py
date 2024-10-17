@@ -674,5 +674,4 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []
-    opt["date"] = "20241008"
     main(opt["path"], opt["date"], names)
