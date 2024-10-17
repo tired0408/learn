@@ -515,7 +515,7 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     web_data.three_month_sale = value.three_month_sale * web_data.conversion_ratio
         except Exception:
             print("-" * 150)
-            print(f"脚本运行出现异常, 出错的截至问题公司:{client_name}")
+            print(f"脚本运行出现异常, 出错的截至问题公司:{client_name},{user},{data['password']}")
             print(traceback.format_exc())
             print("去除该客户的全部数据")
             data_key = copy.deepcopy(list(GOL.web_datas.keys()))
@@ -670,7 +670,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
-    parser.add_argument("-d", "--date", type=str, default="12345678", help="上次统计的日期时间")
+    parser.add_argument("-d", "--date", type=str, default="20241008", help="上次统计的日期时间")
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []
