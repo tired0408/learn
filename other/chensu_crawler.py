@@ -158,11 +158,13 @@ class DataToExcel:
             if id in web_datas:
                 web_datas[id].last_inventory = 0 if pd.isna(row["本期库存*"]) else row["本期库存*"]
                 web_datas[id].last_on_road = 0 if pd.isna(row["在途"]) else row["在途"]
-        # 处理网站数据，计算所需数据
+        save_data: Dict[str, SaveData] = {}
         for _, data in GOL.save_datas.items():
             standard_id = get_id(data.first_business, data.production_name)
             if standard_id not in web_datas:
                 continue
+            if "胰岛素注射液" in standard_id:
+                print(22222222222222)
             web_data = web_datas[standard_id]
             data.inventory = web_data.inventory
             data.month_sales = web_data.month_sale
@@ -170,9 +172,10 @@ class DataToExcel:
             data.cal_turnover_days(average, web_data.inventory)
             data.cal_on_road(web_data.last_on_road + web_data.recent_should_restock, web_data.inventory, 
                              web_data.last_inventory, web_data.recent_sale)
+            save_data[standard_id] = data
         # 读取断点数据
         if breakpoint_data is not None:
-            GOL.save_datas.update(breakpoint_data)
+            save_data.update(breakpoint_data)
         # 写入数据
         print("开始写入数据")
         color_style = {
@@ -182,7 +185,7 @@ class DataToExcel:
         }
         date_style = xlwt.XFStyle()
         date_style.num_format_str = 'YYYY/MM/DD'
-        for row_i, data in enumerate(GOL.save_datas.values()):
+        for row_i, data in enumerate(save_data.values()):
             row_i += 1
             self.ws.write(row_i, 0, data.first_business)
             self.ws.write(row_i, 1, data.production_name)
