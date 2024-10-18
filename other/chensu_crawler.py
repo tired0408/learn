@@ -163,8 +163,6 @@ class DataToExcel:
             standard_id = get_id(data.first_business, data.production_name)
             if standard_id not in web_datas:
                 continue
-            if "胰岛素注射液" in standard_id:
-                print(22222222222222)
             web_data = web_datas[standard_id]
             data.inventory = web_data.inventory
             data.month_sales = web_data.month_sale
