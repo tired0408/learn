@@ -671,7 +671,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
-    parser.add_argument("-d", "--date", type=str, default="20241008", help="上次统计的日期时间")
+    parser.add_argument("-d", "--date", type=str, default="20241010", help="上次统计的日期时间")
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []

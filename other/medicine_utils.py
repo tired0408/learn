@@ -369,7 +369,11 @@ class LYWeb:
         ele = EC.element_to_be_clickable((By.CLASS_NAME, "buttonsubmit"))
         ele = WebDriverWait(self.driver, 60).until(ele)
         ele.click()
-        WebDriverWait(self.driver, 30).until(EC.presence_of_element_located((By.NAME, "menu")))
+        c1 = EC.presence_of_element_located((By.NAME, "menu"))
+        c2 = EC.visibility_of_element_located((By.ID, "proceed-button"))
+        ele = WebDriverWait(self.driver, 30).until(EC.any_of(c1, c2))
+        if ele.get_attribute("id") == "proceed-button":
+            WebDriverWait(self.driver, 30).until(c1)
         print(f"[鹭燕]{user}用户已登录")
 
     def get_inventory(self):
