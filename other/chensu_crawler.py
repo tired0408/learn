@@ -137,12 +137,13 @@ class DataToExcel:
         web_datas: Dict[str, WebData] = {}
         # 合并相同数据
         for id, data in GOL.web_datas.items():
-            save_data = GOL.save_datas[id]
-            standard_id = get_id(save_data.first_business, save_data.production_name)
+            each_save_data: SaveData = GOL.save_datas[id]
+            standard_id = get_id(each_save_data.first_business, each_save_data.production_name)
             if standard_id in web_datas:
                 web_datas[standard_id].inventory += data.inventory
                 web_datas[standard_id].three_month_sale += data.three_month_sale
                 web_datas[standard_id].month_sale += data.month_sale
+                web_datas[standard_id].recent_sale += data.recent_sale
             else:
                 web_datas[standard_id] = data
         # 获取进货数据
@@ -158,7 +159,7 @@ class DataToExcel:
             if id in web_datas:
                 web_datas[id].last_inventory = 0 if pd.isna(row["本期库存*"]) else row["本期库存*"]
                 web_datas[id].last_on_road = 0 if pd.isna(row["在途"]) else row["在途"]
-        save_data: Dict[str, SaveData] = {}
+        save_datas: Dict[str, SaveData] = {}
         for _, data in GOL.save_datas.items():
             standard_id = get_id(data.first_business, data.production_name)
             if standard_id not in web_datas:
@@ -170,10 +171,10 @@ class DataToExcel:
             data.cal_turnover_days(average, web_data.inventory)
             data.cal_on_road(web_data.last_on_road + web_data.recent_should_restock, web_data.inventory, 
                              web_data.last_inventory, web_data.recent_sale)
-            save_data[standard_id] = data
+            save_datas[standard_id] = data
         # 读取断点数据
         if breakpoint_data is not None:
-            save_data.update(breakpoint_data)
+            save_datas.update(breakpoint_data)
         # 写入数据
         print("开始写入数据")
         color_style = {
@@ -183,7 +184,7 @@ class DataToExcel:
         }
         date_style = xlwt.XFStyle()
         date_style.num_format_str = 'YYYY/MM/DD'
-        for row_i, data in enumerate(save_data.values()):
+        for row_i, data in enumerate(save_datas.values()):
             row_i += 1
             self.ws.write(row_i, 0, data.first_business)
             self.ws.write(row_i, 1, data.production_name)
@@ -671,7 +672,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("-p", "--path", type=str, default=r"E:\NewFolder\chensu", help="数据文件的所在文件夹地址")
-    parser.add_argument("-d", "--date", type=str, default="20241010", help="上次统计的日期时间")
+    parser.add_argument("-d", "--date", type=str, default="20241019", help="上次统计的日期时间")
     parser.add_argument("-t", "--topo", action="store_true", help="是否是局部数据，去掉厦门片仔癀宏仁医药有限公司、漳州片仔癀宏仁医药有限公司")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     names = ["厦门片仔癀宏仁医药有限公司", "漳州片仔癀宏仁医药有限公司"] if opt["topo"] else []
