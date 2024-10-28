@@ -509,9 +509,11 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             this_account: Dict[str, WebData] = web_class.export_deliver(client_name)
             for id, value in this_account.items():
                 if id not in GOL.web_datas:
+                    _, client_pname = split_id(id)
+                    value.client_pname = client_pname
                     value.conversion_ratio = 1
                     GOL.web_datas[id] = value
-                    save_data_value = SaveData(client_name, value.client_pname, datetime.datetime.today(), "未在产品信息库找到")
+                    save_data_value = SaveData(client_name, client_pname, datetime.datetime.today(), "未在产品信息库找到")
                     GOL.save_datas[id] = save_data_value
                     continue
                 GOL.save_datas[id].user = user
