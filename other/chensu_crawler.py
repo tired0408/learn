@@ -58,6 +58,14 @@ GOL = Golbal()
 class SaveData:
     """需要保存的数据"""
     def __init__(self, client_name, name, now_date, reference) -> None:
+        """需要保存到EXCEL中的数据
+
+        Args:
+            client_name (str): 客户名称
+            name (str): 商品标准名称
+            now_date (datetime.datetime): 库存获取日期
+            reference (str): 参考信息
+        """
         self.first_business = client_name  # 一级商业
         self.production_name = name  # 商品信息
         self.inventory = 0  # 本期库存
@@ -501,7 +509,10 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             this_account: Dict[str, WebData] = web_class.export_deliver(client_name)
             for id, value in this_account.items():
                 if id not in GOL.web_datas:
-                    print(f"警告：未在产品库找到该产品:{id}")
+                    value.conversion_ratio = 1
+                    GOL.web_datas[id] = value
+                    save_data_value = SaveData(client_name, value.client_pname, datetime.datetime.today(), "未在产品信息库找到")
+                    GOL.save_datas[id] = save_data_value
                     continue
                 GOL.save_datas[id].user = user
                 web_data = GOL.web_datas[id]
