@@ -85,12 +85,15 @@ class Main:
             last_ele_time, same_num = None, 0
             while same_num < 10:
                 latest_ele = content_ele.find_elements(By.TAG_NAME, "li")[0]
-                latest_ele_time = latest_ele.find_element(By.CLASS_NAME, "h_agq_page_li_time")
-                if latest_ele_time.text == last_ele_time:
+                if "empty_list" in latest_ele.get_attribute("class"):
                     same_num += 1
                 else:
-                    same_num = 0
-                    last_ele_time = latest_ele_time.text
+                    latest_ele_time = latest_ele.find_element(By.CLASS_NAME, "h_agq_page_li_time")
+                    if latest_ele_time.text == last_ele_time:
+                        same_num += 1
+                    else:
+                        same_num = 0
+                        last_ele_time = latest_ele_time.text
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_ele_time)
                 pyautogui.moveTo(content_x, content_y)
                 pyautogui.scroll(500)
@@ -98,6 +101,8 @@ class Main:
             datas = content_ele.find_elements(By.TAG_NAME, "li")
             
             for data in datas:
+                if "empty_list" in latest_ele.get_attribute("class"):
+                    continue
                 data_time = data.find_element(By.CLASS_NAME, "h_agq_page_li_time").text
                 if select_date_str not in data_time:
                     continue
