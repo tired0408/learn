@@ -2,6 +2,7 @@
 爬虫抓取夏云所需的销售数据报表,并填入已有的数据表中
 """
 import os
+import glob
 import time
 import shutil
 import warnings
@@ -303,7 +304,6 @@ class WebCrawler(ABC):
     def __init__(self, driver: Chrome, download_path) -> None:
         self._download_timeout = 60
         self._download_path = download_path
-        self._download_file = {}
         self._name2save = self._init_name2save()
         self._driver = driver
         self._action = ActionChains(self._driver)
@@ -312,20 +312,38 @@ class WebCrawler(ABC):
     def _init_name2save(self):
         """初始化下载文件与文件保存地址的对应关系"""
 
-    def wait_download_finnish(self):
-        # 等到下载完成
-        for _, file_name in self._download_file.items():
+    def wait_download(self, name, name_key=None):
+        """等待下载
+
+        Args:
+            name (str): 下载的文件名称
+            name_key (str, optional): 对应保存地址获取的键值. Defaults to None.
+        """
+        name_key = name if name_key is None else name_key
+        file_path: str = ""
+        st = time.time()
+        while True:
+            if (time.time() - st) > self._download_timeout:
+                raise Exception("Waiting download timeout.")
+            download_files = glob.glob(os.path.join(self._download_path, name))
+            if len(download_files) == 0:
+                time.sleep(0.5)
+                continue
+            file_path = download_files[0]
+            break
+        print(f"文件已经在下载:{os.path.basename(file_path)}")
+        if not file_path.endswith(".xlsx"):
+            file_path = file_path.replace(".crdownload", "")
             st = time.time()
             while True:
                 if (time.time() - st) > self._download_timeout:
-                    raise Exception("Waiting download timeout.")
-                if os.path.exists(os.path.join(self._download_path, file_name)):
+                    raise Exception("Waiting download finnish timeout.")
+                if os.path.exists(file_path):
                     break
+                time.sleep(0.5)
         # 移动下载文件
-        for key, file_name in self._download_file.items():
-            src = os.path.join(self._download_path, file_name)
-            shutil.move(src, self._name2save[key])
-
+        shutil.move(file_path, self._name2save[name_key])
+        print(f"文件已移动到相应位置:{self._name2save[name_key]}")
 
 class DadaCrawler(WebCrawler):
 
@@ -340,6 +358,9 @@ class DadaCrawler(WebCrawler):
 
     def download_store_report(self):
         """下载门店报表"""
+        if os.path.exists(self._name2save["门店订单明细"]):
+            print("门店订单明细已下载,不重复下载")
+            return
         # 日期选择
         pattern = (By.XPATH, ".//input[@placeholder='请选择时间']")
         WebDriverWait(self._driver, 10).until(EC.element_to_be_clickable(pattern))
@@ -422,22 +443,8 @@ class DadaCrawler(WebCrawler):
         button = WebDriverWait(tr_ele, 30).until(EC.element_to_be_clickable((By.XPATH, ".//a[text()='下载']")))
         button.click()
         name = os.path.basename(button.get_attribute("href"))
-        self._download_file["门店订单明细"] = name
-        self.__wait_download(name)
+        self.wait_download(name, "门店订单明细")
         return True
-
-    def __wait_download(self, name):
-        """等待开始下载"""
-        st = time.time()
-        while True:
-            if (time.time() - st) > self._download_timeout:
-                raise Exception("Waiting download timeout.")
-            path = os.path.join(self._download_path, name)
-            if os.path.exists(path):
-                break
-            if os.path.exists(f"{path}.crdownload"):
-                break
-        print(f"文件已经在下载:{name}")
 
     def __date_selection(self, select_ele: WebElement, element: WebElement, value):
         """日期选择"""
@@ -487,7 +494,7 @@ class MeiTuanCrawler(WebCrawler):
 
     def toggle_store(self, name):
         """切换店铺"""
-        btn = WebDriverWait(self._driver, 30).until(EC.element_to_be_clickable((By.CLASS_NAME, "perspective-switch")))
+        btn = WebDriverWait(self._driver, 60).until(EC.element_to_be_clickable((By.CLASS_NAME, "perspective-switch")))
         btn.click()
         if name == TM.huming:
             pattern = (By.XPATH, "//tbody[@class='saas-table-tbody']//td[text()='Still bread KIT(湖明店）']")
@@ -506,6 +513,9 @@ class MeiTuanCrawler(WebCrawler):
     def download_synthesize_operate(self):
         """下载综合营业统计表"""
         menu_name, name = "营业报表", "综合营业统计"
+        if os.path.exists(self._name2save[name]):
+            print(f"{name}已存在，不再重新下载")
+            return
         module = self.__enter_main_module("报表中心")
         submodule = self.__enter_rc_module(module, menu_name, name)
         self.__date_select_1(submodule)
@@ -517,6 +527,9 @@ class MeiTuanCrawler(WebCrawler):
     def download_autotrophy(self):
         """下载自营外卖/自提订单明细表"""
         menu_name, name = "营业报表", "自营外卖/自提订单明细"
+        if os.path.exists(self._name2save[name]):
+            print(f"{name}已存在，不再重新下载")
+            return
         download_name = name.replace("/", "_")
         module = self.__enter_main_module("报表中心")
         submodule = self.__enter_rc_module(module, menu_name, name)
@@ -529,6 +542,9 @@ class MeiTuanCrawler(WebCrawler):
     def download_synthesize_income(self):
         """下载综合收款统计表"""
         menu_name, name = "收款报表", "综合收款统计"
+        if os.path.exists(self._name2save[name]):
+            print(f"{name}已存在，不再重新下载")
+            return
         module = self.__enter_main_module("报表中心")
         submodule = self.__enter_rc_module(module, menu_name, name)
         self.__date_select_1(submodule)
@@ -541,6 +557,9 @@ class MeiTuanCrawler(WebCrawler):
     def download_pay_settlement(self):
         """下载支付结算表"""
         menu_name, name = "收款报表", "支付结算"
+        if os.path.exists(self._name2save[name]):
+            print(f"{name}已存在，不再重新下载")
+            return
         module = self.__enter_main_module("报表中心")
         submodule = self.__enter_rc_module(module, menu_name, name)
         self.__date_select_1(submodule)
@@ -557,6 +576,9 @@ class MeiTuanCrawler(WebCrawler):
         iframe_url = '/web/crm-smart/report/dpaas-summary-store/old'
         download_name = "储值余额变动汇总表"
         save_name = "储值消费汇总表"
+        if os.path.exists(self._name2save[save_name]):
+            print(f"{save_name}已存在，不再重新下载")
+            return
         module = self.__enter_main_module("营销中心")
         submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
         self.__date_select_2(submodule)
@@ -572,6 +594,9 @@ class MeiTuanCrawler(WebCrawler):
         iframe_url = '/web/member/statistic/member-increase#/'
         download_name = "会员新增分析"
         save_name = "会员新增情况统计表"
+        if os.path.exists(self._name2save[save_name]):
+            print(f"{save_name}已存在，不再重新下载")
+            return
         # 进入模块
         module = self.__enter_main_module("营销中心")
         submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
@@ -756,10 +781,10 @@ class MeiTuanCrawler(WebCrawler):
     def __download_direct(self, submodule: WebElement, download_name, save_name):
         """直接导出文件"""
         submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
-        file_name = self.__wait_download(download_name)
-        self._download_file[save_name] = file_name
+        self.wait_download(download_name, save_name)
 
     def __download_autotrophy_detail(self, submodule: WebElement, name):
+        """导出文件"""
         submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
         condition = EC.visibility_of_element_located((By.XPATH, "//div[@id='rcDialogTitle0']/../.."))
         dialog = WebDriverWait(self._driver, 10).until(condition)
@@ -769,27 +794,7 @@ class MeiTuanCrawler(WebCrawler):
                 select_ele.click()
             WebDriverWait(select_ele, 2).until(lambda ele: "ant-checkbox-checked" in ele.get_attribute("class"))
         dialog.find_element(By.XPATH, ".//span[text()='确 定']/parent::button").click()
-        file_name = self.__wait_download(name)
-        self._download_file[name] = file_name
-
-    def __wait_download(self, name):
-        """等待下载"""
-        st = time.time()
-        while True:
-            if (time.time() - st) > self._download_timeout:
-                raise Exception("Waiting download timeout.")
-            file_names = os.listdir(self._download_path)
-            for file_name in file_names:
-                if name in file_name:
-                    break
-            else:
-                continue
-            break
-        if file_name.endswith(".xlsx"):
-            return file_name
-        print(f"文件已经在下载:{file_name}")
-        file_name = file_name.replace(".crdownload", "")
-        return file_name
+        self.wait_download(name)
 
     def __synthesize_income_condition(self, submodule: WebElement):
         """综合收款统计的查询条件"""
@@ -1307,16 +1312,12 @@ def crawler_main(chrome_path, driver_path, download_path, user_path):
             meituan.download_store_consume()
             print("下载会员新增情况统计表的相关数据")
             meituan.download_member_addition()
-            print("等待美团文件下载完成,并移动EXCEL到相应位置")
-            meituan.wait_download_finnish()
             print("从美团网站爬虫导出EXCEL文件已完成")
             dada = DadaCrawler(driver, download_path)
             print("登入并打开达达网站")
             dada.login()
             print("下载门店明细报表")
             dada.download_store_report()
-            print("等待达达文件下载完成,并移动EXCEL到相应位置")
-            dada.wait_download_finnish()
             print("从达达网站爬虫导出EXCEL文件已完成")
         except Exception as exc:
             print(traceback.format_exc())
@@ -1403,38 +1404,35 @@ def main():
     save_folder = os.path.join(os.path.dirname(operate_detail_template), "输入数据")
     date_str = GOL.last_month.strftime("%Y%m")
     # 输入文件地址, Bread（湖明店）,Bread（瑞景店）,Sweet
-    input_value_name = os.listdir(save_folder)[0]
-    if "湖明" in input_value_name:
-        GOL.store_name = TM.huming
-    elif "瑞景" in input_value_name:
-        GOL.store_name = TM.ruijing
-    elif "Sweet" in input_value_name:
-        GOL.store_name = TM.sweet
-    else:
-        raise Exception("输入的文件名称存在问题")
-    GOL.save_path.take_out = os.path.join(save_folder, f"1.{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
-    GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{GOL.last_month.strftime('%Y.%m')}.xlsx")
-    # 其他文件地址
-    GOL.save_path.operate_detail = os.path.join(save_folder, f"{GOL.store_name}营业明细表{date_str}.xlsx",)
-    GOL.save_path.synthesize_operate = os.path.join(save_folder, f"{GOL.store_name}综合营业统计{date_str}.xlsx")
-    GOL.save_path.synthesize_income = os.path.join(save_folder, f"{GOL.store_name}综合收款统计{date_str}.xlsx")
-    GOL.save_path.store_consume = os.path.join(save_folder, f"{GOL.store_name}储值消费汇总表{date_str}.xlsx")
-    GOL.save_path.member_addition = os.path.join(save_folder, f"{GOL.store_name}会员新增情况统计表{date_str}.xlsx")
-    GOL.save_path.pay_settlement = os.path.join(save_folder, f"{GOL.store_name}支付结算{date_str}.xlsx")
-    GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(美团后台).xlsx")
-    GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(达达).xlsx")
-    # 从网站上下载相关EXCEL文件
-    crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
-    # 汇总营业明细表
-    operation_detail_main(operate_detail_template)
-    # 饿了么导出数据的处理-账单明细表
-    eleme_main()
-    # 自营外卖(美团后台)表处理
-    meituan_autotrophy_main()
-    # 自营外卖(达达)表处理
-    dada_autotrophy_main()
-    # 汇总外卖收入表
-    take_out_main()
+    input_value_name = "&&".join(os.listdir(save_folder))
+    for deal_name in TM.__dict__.values():
+        if deal_name not in input_value_name:
+            continue
+        print(f"开始处理{deal_name}")
+        GOL.store_name = deal_name
+        GOL.save_path.take_out = os.path.join(save_folder, f"{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
+        GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{GOL.last_month.strftime('%Y.%m')}.xlsx")
+        # 其他文件地址
+        GOL.save_path.operate_detail = os.path.join(save_folder, f"{GOL.store_name}营业明细表{date_str}.xlsx",)
+        GOL.save_path.synthesize_operate = os.path.join(save_folder, f"{GOL.store_name}综合营业统计{date_str}.xlsx")
+        GOL.save_path.synthesize_income = os.path.join(save_folder, f"{GOL.store_name}综合收款统计{date_str}.xlsx")
+        GOL.save_path.store_consume = os.path.join(save_folder, f"{GOL.store_name}储值消费汇总表{date_str}.xlsx")
+        GOL.save_path.member_addition = os.path.join(save_folder, f"{GOL.store_name}会员新增情况统计表{date_str}.xlsx")
+        GOL.save_path.pay_settlement = os.path.join(save_folder, f"{GOL.store_name}支付结算{date_str}.xlsx")
+        GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(美团后台).xlsx")
+        GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(达达).xlsx")
+        # 从网站上下载相关EXCEL文件
+        crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
+        # 汇总营业明细表
+        operation_detail_main(operate_detail_template)
+        # 饿了么导出数据的处理-账单明细表
+        eleme_main()
+        # 自营外卖(美团后台)表处理
+        meituan_autotrophy_main()
+        # 自营外卖(达达)表处理
+        dada_autotrophy_main()
+        # 汇总外卖收入表
+        take_out_main()
 
 
 if __name__ == "__main__":
