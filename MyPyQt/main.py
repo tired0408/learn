@@ -2,6 +2,7 @@ from PyQt5 import QtCore, QtGui, uic, QtWidgets
 import sys
 import cgitb
 import cv2
+import os
 import numpy as np
 import time
 cgitb.enable(format="text")  # 解决pyqt异常，程序就崩溃，而没有任何提示的问题
@@ -12,7 +13,8 @@ from util import image_wait
 1. 直接加载ui文件
 2. 使用: pyuic5 -o 目标文件名.py 源文件名.ui , 转成py文件后导入
 """
-UiMainWindow, _ = uic.loadUiType(r".\GUI\main.ui")
+ui_path = os.path.join(os.path.dirname(__file__), "./GUI/main.ui")
+UiMainWindow, _ = uic.loadUiType(ui_path)
 
 
 class MyApp(QtWidgets.QMainWindow, UiMainWindow):
