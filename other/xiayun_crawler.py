@@ -10,6 +10,7 @@ import calendar
 import traceback
 import xlwings as xw
 import pandas as pd
+from dateutil.relativedelta import relativedelta
 from decimal import Decimal, InvalidOperation
 from abc import ABC, abstractmethod
 from selenium.webdriver import Chrome
@@ -250,24 +251,24 @@ class GetOperateDetail:
     def read_store_consume(self):
         """读取储值消费汇总表的相关数据"""
         data = pd.read_excel(GOL.save_path.store_consume, header=None)
-        assert data.iloc[2, 0] == "日期", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 1] == "储值合计", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 1] == "储值余额", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 2] == "赠送余额", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 4] == "消费合计", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 4] == "储值余额", "表格发生变化，请联系管理员"
-        assert data.iloc[3, 5] == "赠送余额", "表格发生变化，请联系管理员"
+        row2 = data.iloc[2]
+        row3 = data.iloc[3]
+        main_consume_i = get_2row_index(row2, row3, "净储值消费金额", "本金(元)")
+        gift_consume_i = get_2row_index(row2, row3, "净储值消费金额", "赠金(元)")
+        main_paid_i = get_2row_index(row2, row3, "净储值金额", "本金(元)")
+        gift_paid_i = get_2row_index(row2, row3, "净储值金额", "赠金(元)")
         for row in data.iloc[4:].itertuples():
             day_str = row[1]
             if day_str == "合计":
                 break
             day_str: str = day_str[2:]
-            day_str = day_str.replace("-", ".")
+            day_str = day_str.replace("/", ".")
             day_data = self.save_data[day_str]
-            day_data.main_consume = row[5]
-            day_data.gift_consume = row[6]
-            day_data.main_paid = row[2]
-            day_data.gift_paid = row[3]
+            day_data.main_consume = row[main_consume_i]  # 会员主账号消费
+            day_data.gift_consume = row[gift_consume_i]  # 会员赠送账号消费
+            day_data.main_paid = row[main_paid_i]  # 会员主账号充值
+            day_data.gift_paid = row[gift_paid_i]  # 会员赠送账号充值
+
 
     def read_newly_increased(self):
         """"读取会员新增情况统计表的相关数据"""
@@ -324,7 +325,7 @@ class WebCrawler(ABC):
         st = time.time()
         while True:
             if (time.time() - st) > self._download_timeout:
-                raise Exception("Waiting download timeout.")
+                raise Exception(f"Waiting download timeout:{name}")
             download_files = glob.glob(os.path.join(self._download_path, name))
             if len(download_files) == 0:
                 time.sleep(0.5)
@@ -341,6 +342,7 @@ class WebCrawler(ABC):
                 if os.path.exists(file_path):
                     break
                 time.sleep(0.5)
+        time.sleep(3)
         # 移动下载文件
         shutil.move(file_path, self._name2save[name_key])
         print(f"文件已移动到相应位置:{self._name2save[name_key]}")
@@ -355,6 +357,7 @@ class DadaCrawler(WebCrawler):
     def login(self):
         """登录达达网站"""
         self._driver.get(r"https://newopen.imdada.cn/#/manager/shop/report/order")
+        time.sleep(5)
 
     def download_store_report(self):
         """下载门店报表"""
@@ -374,7 +377,8 @@ class DadaCrawler(WebCrawler):
             WebDriverWait(self._driver, 10).until(EC.visibility_of(load_icon))
         except TimeoutException:
             print("订单报表查询的加载图标已提前完成")
-        WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(load_icon))
+        time.sleep(1)
+        WebDriverWait(self._driver, 120).until(EC.invisibility_of_element(load_icon))
         # 申请报表下载
         if GOL.store_name == TM.huming:
             btn_str = "//div[text()='Still Bread（湖明店）']/../..//span[text()='下载门店订单明细']"
@@ -384,26 +388,27 @@ class DadaCrawler(WebCrawler):
             btn_str = "//div[text()='Still sweet']/../..//span[text()='下载门店订单明细']"
         else:
             raise Exception("未知店名")
-        self._driver.find_element(By.XPATH, btn_str).click()
-        condition = EC.visibility_of_element_located((By.CLASS_NAME, "modal-content"))
-        modal = WebDriverWait(self._driver, 10).until(condition)
-        condition = EC.element_to_be_clickable((By.CLASS_NAME, "modal-header"))
-        header = WebDriverWait(modal, 10).until(condition)
-        header.click()
-        condition = EC.element_to_be_clickable((By.XPATH, ".//button[contains(@class, 'close')]/span"))
-        ele = WebDriverWait(modal, 10).until(condition)
+        WebDriverWait(self._driver, 20).until(EC.presence_of_element_located((By.XPATH, btn_str)))
+        ele = WebDriverWait(self._driver, 20).until(EC.element_to_be_clickable((By.XPATH, btn_str)))
         ele.click()
+        time.sleep(3)
+        WebDriverWait(self._driver, 60).until(EC.presence_of_element_located((By.XPATH, "//div[@class='modal-header']//h5[text()='报表下载提示']")))
+        ele = WebDriverWait(self._driver, 60).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='modal-body']//a[text()='下载列表']")))
+        ele.click()
+        time.sleep(5)
         # 跳转到下载页面
+        WebDriverWait(self._driver, 60).until(EC.presence_of_element_located((By.XPATH, "//div[text()=' 订单报表']/..")))
         ele = WebDriverWait(self._driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[text()=' 订单报表']/..")))
         if "active" not in ele.get_attribute("class"):
             print("展开订单列表")
             ele.click()
+        WebDriverWait(ele, 30).until(EC.presence_of_element_located((By.XPATH, ".//a[text()='下载列表']")))
         ele = WebDriverWait(ele, 10).until(EC.element_to_be_clickable((By.XPATH, ".//a[text()='下载列表']")))
         for i in range(5):
-            ele.click()
-            time.sleep(1)
             if "active" in ele.get_attribute("class"):
                 break
+            ele.click()
+            time.sleep(1)
             print("点击下载列表出现问题，重新点击")
         else:
             raise Exception("点击下载列表错误")
@@ -411,7 +416,7 @@ class DadaCrawler(WebCrawler):
             WebDriverWait(self._driver, 10).until(EC.visibility_of(load_icon))
         except TimeoutException:
             print("下载列表的加载图标已提前完成")
-        WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(load_icon))
+        WebDriverWait(self._driver, 60).until(EC.invisibility_of_element(load_icon))
         for i in range(5):
             download_result = self.__download_file()
             print(f"第{i}次的文件下载结果:{download_result}")
@@ -442,6 +447,7 @@ class DadaCrawler(WebCrawler):
         # 下载文件
         button = WebDriverWait(tr_ele, 30).until(EC.element_to_be_clickable((By.XPATH, ".//a[text()='下载']")))
         button.click()
+        time.sleep(5)
         name = os.path.basename(button.get_attribute("href"))
         self.wait_download(name, "门店订单明细")
         return True
@@ -491,20 +497,35 @@ class MeiTuanCrawler(WebCrawler):
         # clear_and_send(driver.find_element(By.ID, "password"), r"stillrelax0601")
         # driver.find_element(By.XPATH, "//button[text()='登录']").click()
         self._driver.get(r"https://pos.meituan.com")
+        WebDriverWait(self._driver, 30).until(EC.title_is("美团管家"))
 
     def toggle_store(self, name):
         """切换店铺"""
-        btn = WebDriverWait(self._driver, 60).until(EC.element_to_be_clickable((By.CLASS_NAME, "perspective-switch")))
-        btn.click()
         if name == TM.huming:
-            pattern = (By.XPATH, "//tbody[@class='saas-table-tbody']//td[text()='Still bread KIT(湖明店）']")
+            ele_name = "Still bread KIT(湖明店）"
+            pattern = (By.XPATH, f"//tbody[@class='saas-table-tbody']//td[text()='{ele_name}']")
         elif name == TM.ruijing:
-            pattern = (By.XPATH, "//tbody[@class='saas-table-tbody']//td[text()='Still bread Kit·还是面包厨房（瑞景店）']")
+            ele_name = "Still bread Kit·还是面包厨房（瑞景店）"
+            pattern = (By.XPATH, f"//tbody[@class='saas-table-tbody']//td[text()='{ele_name}']")
         elif name == TM.sweet:
-            pattern = (By.XPATH, "//tbody[@class='saas-table-tbody']//td[text()='Still sweet·还是甜品厨房（洪文店）']")
+            ele_name = "Still sweet·还是甜品厨房（洪文店）"
+            pattern = (By.XPATH, f"//tbody[@class='saas-table-tbody']//td[text()='{ele_name}']")
         else:
             raise Exception("店铺名称错误")
-        btn = WebDriverWait(self._driver, 30).until(EC.element_to_be_clickable(pattern))
+        btn = WebDriverWait(self._driver, 60).until(EC.element_to_be_clickable((By.CLASS_NAME, "perspective-switch")))
+        if ele_name == btn.get_attribute("title"):
+            print("当前所在店铺即为所需,不用切换")
+            return
+        for _ in range(6):
+            btn.click()
+            try:
+                WebDriverWait(self._driver, 5).until(EC.element_to_be_clickable(pattern))
+            except TimeoutException:
+                continue
+            break
+        else:
+            raise Exception("切换店铺失败,始终找不到弹窗")
+        btn = self._driver.find_element(*pattern)
         btn.click()
         WebDriverWait(self._driver, 60).until(EC.invisibility_of_element(pattern))
         WebDriverWait(self._driver, 60).until(EC.element_to_be_clickable((By.CLASS_NAME, "perspective-switch")))
@@ -527,10 +548,10 @@ class MeiTuanCrawler(WebCrawler):
     def download_autotrophy(self):
         """下载自营外卖/自提订单明细表"""
         menu_name, name = "营业报表", "自营外卖/自提订单明细"
-        if os.path.exists(self._name2save[name]):
-            print(f"{name}已存在，不再重新下载")
-            return
         download_name = name.replace("/", "_")
+        if os.path.exists(self._name2save[download_name]):
+            print(f"{download_name}已存在，不再重新下载")
+            return
         module = self.__enter_main_module("报表中心")
         submodule = self.__enter_rc_module(module, menu_name, name)
         self.__date_select_3(submodule)
@@ -573,7 +594,7 @@ class MeiTuanCrawler(WebCrawler):
         """下载储值消费汇总表"""
         menu_name = "数据报表"
         name = "储值余额变动汇总表（原储值消费汇总表）"
-        iframe_url = '/web/crm-smart/report/dpaas-summary-store/old'
+        iframe_url = '/web/crm-smart/report/dpaas-summary-store'
         download_name = "储值余额变动汇总表"
         save_name = "储值消费汇总表"
         if os.path.exists(self._name2save[save_name]):
@@ -581,18 +602,19 @@ class MeiTuanCrawler(WebCrawler):
             return
         module = self.__enter_main_module("营销中心")
         submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
-        self.__date_select_2(submodule)
+        self.__date_select_4(submodule)
+        ele = WebDriverWait(self._driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='custom-dimension-label']//span[text()='日期']")))
+        ele.click()
         self.__search(submodule)
-        self.__clear_excel(name)
         self.__wait_search_finnsh_2()
+        self.__clear_excel(name)
         self.__download_direct(submodule, download_name, save_name)
 
     def download_member_addition(self):
         """下载会员新增情况统计表"""
         menu_name = "数据报表"
-        name = "会员新增分析（原会员新增情况统计表）"
+        name = "会员新增分析"
         iframe_url = '/web/member/statistic/member-increase#/'
-        download_name = "会员新增分析"
         save_name = "会员新增情况统计表"
         if os.path.exists(self._name2save[save_name]):
             print(f"{save_name}已存在，不再重新下载")
@@ -605,7 +627,7 @@ class MeiTuanCrawler(WebCrawler):
         self.__search(submodule)
         self.__clear_excel(name)
         self.__wait_search_finnsh_1(submodule)
-        self.__download_direct(submodule, download_name, save_name)
+        self.__download_direct(submodule, name, save_name)
 
     def __enter_main_module(self, name):
         """进入主模块的方法：运营中心、营销中心、库存管理、报表中心"""
@@ -631,6 +653,7 @@ class MeiTuanCrawler(WebCrawler):
             current_module.find_element(By.XPATH, f".//div[@role='tablist']//span[text()='{name}首页']")
         except NoSuchElementException as exc:
             raise Exception("进入模块出现问题") from exc
+        time.sleep(5)
         return current_module
 
     def __enter_rc_module(self, module, menu_name, name):
@@ -646,7 +669,7 @@ class MeiTuanCrawler(WebCrawler):
     def __get_statement_submodule(self, module: WebElement):
         """获取报表中心激活的子模块"""
         pattern = (By.XPATH, ".//div[@id='__root_wrapper_rms-report']//div[@style='display: block;']")
-        WebDriverWait(module, 10).until(EC.presence_of_all_elements_located(pattern))
+        WebDriverWait(module, 60).until(EC.presence_of_all_elements_located(pattern))
         current_submodule = module.find_element(*pattern)
         return current_submodule
 
@@ -655,10 +678,12 @@ class MeiTuanCrawler(WebCrawler):
         print(f"进入营销中心-{menu_name}-{name}")
         if self.__get_active_submodule_name(module) != name:
             self.__hover_and_click(module, menu_name, name)
+            time.sleep(5)
         pattern = (By.XPATH, f".//iframe[@data-current-url='{url}']")
-        WebDriverWait(module, 60).until(EC.visibility_of_element_located(pattern))
+        WebDriverWait(module, 120).until(EC.visibility_of_element_located(pattern))
         iframe = module.find_element(*pattern)
         self._driver.switch_to.frame(iframe)
+        time.sleep(2)
         return self._driver
 
     def __get_active_submodule_name(self, module: WebElement):
@@ -686,7 +711,7 @@ class MeiTuanCrawler(WebCrawler):
     def __date_select_1(self, submodule: WebElement):
         """日期选择1:综合收款统计的那个类型日期选择控件"""
         pattern = (By.XPATH, ".//input[@placeholder='请选择日期']")
-        WebDriverWait(submodule, 10).until(EC.visibility_of_element_located(pattern))
+        WebDriverWait(submodule, 60).until(EC.element_to_be_clickable(pattern))
         submodule.find_element(*pattern).click()
         pattern = (By.XPATH, "//div[@class='ant-calendar-footer']//span[text()='上月']")
         WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located(pattern))
@@ -694,7 +719,7 @@ class MeiTuanCrawler(WebCrawler):
         WebDriverWait(self._driver, 10).until_not(EC.visibility_of_element_located(pattern))
 
     def __date_select_2(self, submodule: WebElement):
-        """日期选择2:储值消费汇总表的那个类型日期选择控件"""
+        """日期选择2:储值消费汇总表（旧版）的那个类型日期选择控件"""
         ele = WebDriverWait(submodule, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "el-range-input")))
         ele.click()
         pattern = (By.XPATH, ".//div[@class='el-picker-panel el-date-range-picker el-popper']")
@@ -733,6 +758,39 @@ class MeiTuanCrawler(WebCrawler):
         self._driver.find_element(*pattern).click()
         WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(calendar_ele))
 
+    def __date_select_4(self, submodule: WebElement):
+        """日期选择4:储值消费汇总表（新版）的那个类型日期选择控件"""
+        WebDriverWait(submodule, 60).until(EC.visibility_of_element_located((By.XPATH, "//div[text()='序号']")))
+        start_ele, end_ele = submodule.find_elements(By.CLASS_NAME, "saas-picker-input")
+        now_date = datetime.today()
+        end_date = now_date.replace(day=1) - relativedelta(days=1)
+        start_date = end_date.replace(day=1)
+        for ele, select_date in zip([start_ele, end_ele], [start_date, end_date]):
+            ele.click()
+            label = WebDriverWait(submodule, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "saas-picker-header-view")))
+            label_date = datetime.strptime(label.text, "%Y年%m月")
+            last_year_btn = submodule.find_element(By.CLASS_NAME, "saas-picker-header-super-prev-btn")
+            next_year_btn = submodule.find_element(By.CLASS_NAME, "saas-picker-header-super-next-btn")
+            last_month_btn = submodule.find_element(By.CLASS_NAME, "saas-picker-header-prev-btn")
+            next_month_btn = submodule.find_element(By.CLASS_NAME, "saas-picker-header-next-btn")
+            while True:
+                label = submodule.find_elements(By.CLASS_NAME, "saas-picker-header-view")[0]
+                label_date = datetime.strptime(label.text, "%Y年%m月")
+                if label_date.year == select_date.year and label_date.month == select_date.month:
+                    break
+                if label_date.year > select_date.year:
+                    last_year_btn.click()
+                elif label_date.year < select_date.year:
+                    next_year_btn.click()
+                elif label_date.month > select_date.month:
+                    last_month_btn.click()
+                elif label_date.month < select_date.month:
+                    next_month_btn.click()
+                WebDriverWait(label, 10).until(lambda ele: ele.text != label_date.strftime("%Y年%m月") and ele.text != "")
+            select_date_str = select_date.strftime('%Y-%m-%d')
+            submodule.find_element(By.XPATH, f"//td[@title='{select_date_str}']").click()
+        submodule.find_element(By.XPATH, "//span[text()='确 定']").click()
+
     def __locate_last_month(self):
         """日期选择3的日历控件定位到上个月"""
         now_date = datetime.today()
@@ -757,6 +815,7 @@ class MeiTuanCrawler(WebCrawler):
     def __search(self, submodule: WebElement):
         ele = WebDriverWait(submodule, 60).until(EC.element_to_be_clickable((By.XPATH, ".//button[contains(., '查询')]")))
         ele.click()
+        time.sleep(5)
 
     def __wait_search_finnsh_1(self, submodule: WebElement):
         """等待查询内容显示1:类似综合收款统计的表格类型"""
@@ -781,7 +840,7 @@ class MeiTuanCrawler(WebCrawler):
     def __download_direct(self, submodule: WebElement, download_name, save_name):
         """直接导出文件"""
         submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
-        self.wait_download(download_name, save_name)
+        self.wait_download(f"*{download_name}*", save_name)
 
     def __download_autotrophy_detail(self, submodule: WebElement, name):
         """导出文件"""
@@ -794,7 +853,7 @@ class MeiTuanCrawler(WebCrawler):
                 select_ele.click()
             WebDriverWait(select_ele, 2).until(lambda ele: "ant-checkbox-checked" in ele.get_attribute("class"))
         dialog.find_element(By.XPATH, ".//span[text()='确 定']/parent::button").click()
-        self.wait_download(name)
+        self.wait_download(f"*{name}*", name)
 
     def __synthesize_income_condition(self, submodule: WebElement):
         """综合收款统计的查询条件"""
@@ -1203,7 +1262,7 @@ class TalkOutData:
 
         ws = self.wb[f"{GOL.last_month.year}年自营外卖"]
         row_i = [str(ws.cell(i, 1).value) for i in range(3, 15)]
-        row_i = row_i.index(GOL.last_month.strftime("%Y.%m")) + 3
+        row_i = row_i.index(GOL.last_month.strftime("%Y.%m")[2:]) + 3
         ws.cell(row_i, 2, order_num)  # 订单数量
         ws.cell(row_i, 3, member_consume)  # 会员消费订单数
         ws.cell(row_i, 5, order_amount)  # 订单金额
@@ -1293,35 +1352,33 @@ def list_generate(indexs, values):
 def crawler_main(chrome_path, driver_path, download_path, user_path):
     """网站抓取的主方法"""
     print("启动浏览器，开始爬虫抓取")
-    with init_chrome(chrome_path, driver_path, download_path, user_path) as driver:
-        try:
-            meituan = MeiTuanCrawler(driver, download_path)
-            print("登录并打开美团网站")
-            meituan.login()
-            print("切换店铺")
-            meituan.toggle_store(GOL.store_name)
-            print("下载综合营业统计表")
-            meituan.download_synthesize_operate()
-            print("下载自营外卖/自提订单明细表")
-            meituan.download_autotrophy()
-            print("下载综合收款统计表的数据")
-            meituan.download_synthesize_income()
-            print("下载支付结算表的相关数据")
-            meituan.download_pay_settlement()
-            print("下载储值消费汇总表的数据")
-            meituan.download_store_consume()
-            print("下载会员新增情况统计表的相关数据")
-            meituan.download_member_addition()
-            print("从美团网站爬虫导出EXCEL文件已完成")
-            dada = DadaCrawler(driver, download_path)
-            print("登入并打开达达网站")
-            dada.login()
-            print("下载门店明细报表")
-            dada.download_store_report()
-            print("从达达网站爬虫导出EXCEL文件已完成")
-        except Exception as exc:
-            print(traceback.format_exc())
-            raise Exception("爬虫异常，退出程序") from exc
+    driver = init_chrome(chrome_path, driver_path, download_path, user_path)
+    meituan = MeiTuanCrawler(driver, download_path)
+    print("登录并打开美团网站")
+    meituan.login()
+    print("切换店铺")
+    meituan.toggle_store(GOL.store_name)
+    print("下载综合营业统计表")
+    meituan.download_synthesize_operate()
+    print("下载自营外卖/自提订单明细表")
+    meituan.download_autotrophy()
+    print("下载综合收款统计表的数据")
+    meituan.download_synthesize_income()
+    print("下载支付结算表的相关数据")
+    meituan.download_pay_settlement()
+    print("下载储值消费汇总表的数据")
+    meituan.download_store_consume()
+    print("下载会员新增情况统计表的相关数据")
+    meituan.download_member_addition()
+    print("从美团网站爬虫导出EXCEL文件已完成")
+    dada = DadaCrawler(driver, download_path)
+    print("登入并打开达达网站")
+    dada.login()
+    print("下载门店明细报表")
+    dada.download_store_report()
+    print("从达达网站爬虫导出EXCEL文件已完成")
+    driver.quit()
+
 
 
 def operation_detail_main(template_path):
@@ -1411,7 +1468,7 @@ def main():
         print(f"开始处理{deal_name}")
         GOL.store_name = deal_name
         GOL.save_path.take_out = os.path.join(save_folder, f"{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
-        GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{GOL.last_month.strftime('%Y.%m')}.xlsx")
+        GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{date_str}.xlsx")
         # 其他文件地址
         GOL.save_path.operate_detail = os.path.join(save_folder, f"{GOL.store_name}营业明细表{date_str}.xlsx",)
         GOL.save_path.synthesize_operate = os.path.join(save_folder, f"{GOL.store_name}综合营业统计{date_str}.xlsx")
@@ -1421,6 +1478,9 @@ def main():
         GOL.save_path.pay_settlement = os.path.join(save_folder, f"{GOL.store_name}支付结算{date_str}.xlsx")
         GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(美团后台).xlsx")
         GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(达达).xlsx")
+        if os.path.exists(GOL.save_path.operate_detail):
+            print(f"{deal_name}的营业明细表已在不跑第二遍")
+            continue
         # 从网站上下载相关EXCEL文件
         crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
         # 汇总营业明细表
