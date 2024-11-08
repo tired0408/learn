@@ -1215,9 +1215,10 @@ class TalkOutData:
         ws = self.wb[f"{GOL.last_month.year}年饿了么"]
         if GOL.store_name == TM.sweet:
             row_i = [str(ws.cell(i, 1).value) for i in range(17, 23)]
+            row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 17
         else:
             row_i = [str(ws.cell(i, 1).value) for i in range(4, 16)]
-        row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 17
+            row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 4
         ws.cell(row_i, 2, should_income)  
         ws.cell(row_i, 3, service_cost)  
         ws.cell(row_i, 4, time_raise)  
