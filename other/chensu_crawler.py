@@ -140,7 +140,7 @@ class DataToExcel:
         length = (utf8_length - length) / 2 + length
         return int(length) + 2
 
-    def write_to_excel(self, breakpoint_data: Dict[str, SaveData]):
+    def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas):
         """将数据写入EXCEL表格"""
         web_datas: Dict[str, WebData] = {}
         # 合并相同数据
@@ -155,7 +155,6 @@ class DataToExcel:
             else:
                 web_datas[standard_id] = data
         # 获取进货数据
-        restock_datas = get_deliver_goods(GOL.last_tidy_date)
         for _, row in restock_datas.iterrows():
             id = get_id(row["客户"], row["商品名称"])
             if id in web_datas:
@@ -666,6 +665,8 @@ def get_deliver_goods(date_value):
 def main(path, start_date, ignore_names: List):
     print("设置全局数据")
     GOL.set_data(path, start_date)
+    print("获取在途数据")
+    restock_datas = get_deliver_goods(GOL.last_tidy_date)
     print("读取断点数据")
     breakpoint_names, breakpoint_datas = read_breakpoint()
     print("针对网站数据进行分类")
@@ -677,7 +678,7 @@ def main(path, start_date, ignore_names: List):
     crawler_websites_data(websites_by_code, websites_no_code)
     print("开始写入所有数据")
     writer = DataToExcel()
-    writer.write_to_excel(breakpoint_datas)
+    writer.write_to_excel(breakpoint_datas, restock_datas)
     print("程序运行已完成")
 
 
