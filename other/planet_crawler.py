@@ -24,12 +24,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.remote.webelement import WebElement
+from crawler_util import init_chrome
 
 
 class Store:
 
-    def __init__(self, name, is_picture, is_annex, is_comment):
-        dir_path = r"E:\NewFolder\zhishi"
+    def __init__(self, dir_path, name, is_picture, is_annex, is_comment):
         self.txt_path = os.path.join(dir_path, f"{name}.txt")
         self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片") if is_picture else (None, 0)
         self.pool = ThreadPoolExecutor(max_workers=10)
@@ -106,7 +106,7 @@ class Store:
             if os.path.exists(os.path.join(self.chrome_download, f"{name}")):
                 break
             time.sleep(1)
-            if (time.time() - st) > 10:
+            if (time.time() - st) > 120:
                 raise Exception("Waiting download start timeout.")
 
     def annex_exists(self, name):
@@ -160,11 +160,14 @@ class Store:
             f"{content}\n"
         ])
         if comment is not None:
-            self.f.write(f"**评论:{comment}\n")
+            value = f"**评论:{comment}\n"
+            self.f.write(value)
         if len(images) != 0:
-            self.f.write(f"**图片:{','.join(images)}\n")
+            images = ','.join(images)
+            self.f.write(f"**图片:{images}\n")
         if len(annexs) != 0:
-            self.f.write(f"**附件:\n{'\n'.join(annexs)}\n")
+            annexs = '\n'.join(annexs)
+            self.f.write(f"**附件:\n{annexs}\n")
         self.f.write(f"{'-' * 100}\n")
 
 
@@ -179,34 +182,21 @@ class Crawler:
         :param annex_name: (srt); 下载附件的后缀名,用,分割,"all"为全部抓取,None为不抓取
         :param comment_name: (str); 抓取评论的人名
         """
+        dir_path = r"E:\NewFolder\zhishi"
+        chrome_path = os.path.join(dir_path, r"..\chromedriver_mac_arm64_114\chrome114\App\Chrome-bin\chrome.exe")
+        chromedriver_path = os.path.join(dir_path, r"..\chromedriver_mac_arm64_114\chromedriver.exe")
+        download_path = r"D:\Download"
+        user_path = r'C:\Users\Administrator\AppData\Local\Google\Chrome\User Data'
+
         self.is_img = is_img
         self.annex_name = annex_name
         self.comment_name = comment_name
-        self.driver = self.init_chrome()  # 定义chrome浏览器驱动
+        self.driver = init_chrome(chromedriver_path, download_path, user_path=user_path, chrome_path=chrome_path, is_proxy=False)  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
         self.actions = ActionChains(self.driver)
-        self.owner = Store(name, is_img, annex_name is not None, comment_name is not None)
-        self.member = Store(f"{name}_成员", is_img, annex_name is not None,
+        self.owner = Store(dir_path, name, is_img, annex_name is not None, comment_name is not None)
+        self.member = Store(dir_path, f"{name}_成员", is_img, annex_name is not None,
                             comment_name is not None) if not is_owner else None
-
-    def init_chrome(self):
-        """定义谷歌浏览器"""
-        exe_path = r'E:\NewFolder\chromedriver_mac_arm64_114\chromedriver.exe'
-        user_path = r'C:\Users\Administrator\AppData\Local\Google\Chrome\User Data'
-        service = Service(exe_path)
-        chrome_options = Options()
-        chrome_options.add_argument(f'user-data-dir={user_path}')  # 指定用户数据目录
-        # chrome_options.add_argument("--disable-extensions")  # 禁用扩展
-        # chrome_options.add_argument('--headless')  # 设置无界面模式
-        # chrome_options.add_argument('--disable-gpu')  # 禁用 GPU 加速
-        chrome_options.add_argument('--log-level=3')  # 关闭日志提示
-        prefs = {
-            "download.default_directory": r"D:\Download",  # 指定下载目录
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-        # 启动 Chrome 浏览器
-        driver = Chrome(service=service, options=chrome_options)
-        return driver
 
     def __del__(self):
         """关闭谷歌浏览器"""
@@ -471,7 +461,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--owner", action="store_true", help="是否只看星主,默认查看全部")
     parser.add_argument("-i", "--img", action="store_true", help="是否下载图片,默认不下载")
-    parser.add_argument("-a", "--annex", type=str, default=None, help="下载附件的后缀名,用,间隔")
+    parser.add_argument("-a", "--annex", type=str, default=None, help="下载附件的后缀名,all代表全部,多个用,间隔")
     parser.add_argument("-c", "--comment", type=str, default=None, help="抓取评论的名字")
     parser.add_argument("-d", "--date", type=str, default="1800.01.01_00.00", help="抓取的开始日期,例如:2022.11.30_11.57")
     parser.add_argument("-u", "--url", type=str, default=None, help="知识星球的URL")
@@ -480,10 +470,11 @@ if __name__ == "__main__":
     # 测试代码的时候进行修改
     # opt["owner"] = True
     # opt["img"] = True
+    opt["annex"] = "all"
     # opt["comment"] = "年大"
     # opt["date"] = "2022.11.30_11.57"
-    # opt["url"] = r"https://wx.zsxq.com/dweb2/index/group/28855211542221"
-    # opt["name"] = "年大"
+    opt["url"] = r"https://wx.zsxq.com/group/88888558554112"
+    opt["name"] = "xinxipingquan"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None

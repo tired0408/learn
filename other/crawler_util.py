@@ -46,6 +46,7 @@ def select_date_1(start_date: datetime.datetime, end_date:datetime.datetime, sta
 
 def init_chrome(chromedriver_path, download_path, user_path=None, chrome_path=None, is_proxy=True):
     """初始化浏览器
+    
     args:
         chromedriver_path: (str); 浏览器驱动的地址
         download_path: (str); 下载路径
