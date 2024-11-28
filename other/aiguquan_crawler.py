@@ -54,12 +54,14 @@ class Main:
         ele = WebDriverWait(self.driver, 30).until(EC.element_to_be_clickable((By.ID, "chatting_room")))
         ele.click()
         WebDriverWait(self.driver, 30).until(lambda d: len(d.window_handles) > handle_len)
+        time.sleep(5)
         self.driver.switch_to.window(self.driver.window_handles[-1])
         save_datas = []
         # 下载聊天记录
         ele = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='只看圈主']/ancestor::div[1]")))
         if "bindThis" not in ele.get_attribute("class"):
             ele.click()
+            time.sleep(2)
         content_ele = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[@class='h_agq_page_chatting_body']")))
         content_x, content_y = self.get_element_center(content_ele)
         now_date = datetime.datetime.now()
@@ -77,13 +79,19 @@ class Main:
             if str(select_date.month) not in month_label.text:
                 ele = ".//div[@class='el-date-picker__header']/button[contains(@class, 'el-icon-arrow-left')]"
                 date_container.find_element(By.XPATH, ele).click()
+                time.sleep(1)
             ele = f".//span[contains(text(), {select_date.day})]/ancestor::td[contains(@class, 'available')]"
             ele = WebDriverWait(date_container, 10).until(EC.element_to_be_clickable((By.XPATH, ele)))
             ele.click()
-            ele = f".//li[contains(@class, 'h_agq_page_li')]//span[contains(text(), '{select_date_str}')]"
-            ele = WebDriverWait(content_ele, 10).until(EC.visibility_of_element_located((By.XPATH, ele)))
+            time.sleep(1)
+            c1 = EC.visibility_of_element_located((By.XPATH, f".//li[contains(@class, 'h_agq_page_li')]//span[contains(text(), '{select_date_str}')]"))
+            c2 = EC.visibility_of_element_located((By.CLASS_NAME, "empty_list"))
+            ele = WebDriverWait(content_ele, 10).until(EC.any_of(c1, c2))
+            if "empty_list" in ele.get_attribute("class"):
+                continue
             last_ele_time, same_num = None, 0
             while same_num < 10:
+                time.sleep(1)
                 latest_ele = content_ele.find_elements(By.TAG_NAME, "li")[0]
                 if "empty_list" in latest_ele.get_attribute("class"):
                     same_num += 1
@@ -97,7 +105,6 @@ class Main:
                 self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_ele_time)
                 pyautogui.moveTo(content_x, content_y)
                 pyautogui.scroll(500)
-                time.sleep(0.2)
             datas = content_ele.find_elements(By.TAG_NAME, "li")
             
             for data in datas:
