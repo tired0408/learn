@@ -62,10 +62,10 @@ class Main:
         if "bindThis" not in ele.get_attribute("class"):
             ele.click()
             time.sleep(2)
-        content_ele = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[@class='h_agq_page_chatting_body']")))
-        content_x, content_y = self.get_element_center(content_ele)
         now_date = datetime.datetime.now()
         for i in range(0, 7):
+            content_ele = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//div[@class='h_agq_page_chatting_body']")))
+            content_x, content_y = self.get_element_center(content_ele)
             ele = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[contains(@class, 'el-date-editor')]/input[@class='el-input__inner']")))
             ele.click()
             date_container = WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "el-picker-panel__body-wrapper")))
@@ -90,25 +90,28 @@ class Main:
             if "empty_list" in ele.get_attribute("class"):
                 continue
             last_ele_time, same_num = None, 0
-            while same_num < 10:
+            while same_num < 5:
                 time.sleep(1)
-                latest_ele = content_ele.find_elements(By.TAG_NAME, "li")[0]
-                if "empty_list" in latest_ele.get_attribute("class"):
-                    same_num += 1
-                else:
-                    latest_ele_time = latest_ele.find_element(By.CLASS_NAME, "h_agq_page_li_time")
-                    if latest_ele_time.text == last_ele_time:
+                try:
+                    latest_ele = WebDriverWait(content_ele, 10).until(EC.visibility_of_element_located((By.TAG_NAME, "li")))    
+                    if "empty_list" in latest_ele.get_attribute("class"):
                         same_num += 1
                     else:
-                        same_num = 0
-                        last_ele_time = latest_ele_time.text
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_ele_time)
-                pyautogui.moveTo(content_x, content_y)
-                pyautogui.scroll(500)
+                        latest_ele_time = WebDriverWait(latest_ele, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "h_agq_page_li_time")))
+                        if latest_ele_time.text == last_ele_time:
+                            same_num += 1
+                        else:
+                            same_num = 0
+                            last_ele_time = latest_ele_time.text
+                    self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", latest_ele_time)
+                    pyautogui.moveTo(content_x, content_y)
+                    pyautogui.scroll(500)
+                except Exception as e:
+                    continue
             datas = content_ele.find_elements(By.TAG_NAME, "li")
             
             for data in datas:
-                if "empty_list" in latest_ele.get_attribute("class"):
+                if "empty_list" in data.get_attribute("class"):
                     continue
                 data_time = data.find_element(By.CLASS_NAME, "h_agq_page_li_time").text
                 if select_date_str not in data_time:
@@ -120,6 +123,7 @@ class Main:
             for sd in save_datas:
                 f.write(f"{sd}\n")
                 f.write(f"{'-' * 100}\n")
+        print(f"数据存储完毕,一共存储了{len(save_datas)}条数据")
 
     def get_element_center(self, element: WebElement):
         """获取元素中心位置"""
