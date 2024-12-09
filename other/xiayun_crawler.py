@@ -168,7 +168,7 @@ class GetOperateDetail:
         row4 = data.iloc[4]
         ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）", is_must=False)
         dianping_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信", is_must=False)
-        cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币")
+        cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币", is_must=False)
         eat_in_i_list = get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)
         eat_in_i_list = list(range(eat_in_i_list[0], eat_in_i_list[1]))
         pubilc_relation_income_i = get_3row_index(
@@ -184,7 +184,7 @@ class GetOperateDetail:
             day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.save_data[day_str]
-            day_data.cash = row[cach_i + 1]
+            day_data.cash = row[cach_i + 1] if cach_i is not None else 0
             day_data.wechat = row[wechat_i + 1]
             day_data.eat_in = sum(list_generate(eat_in_i_list, row))
             day_data.ele_me = row[ele_me_i + 1] if ele_me_i is not None else 0 
