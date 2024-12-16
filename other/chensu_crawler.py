@@ -551,7 +551,7 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
         driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
         url2class: Dict[str, WebAbstract] = {
             WEBURL.spfj: SPFJWebCustom(driver, WEBURL.spfj),
-            WEBURL.inca: INCAWebCustom(driver, WEBURL.inca),
+            WEBURL.inca: INCAWebCustom(driver, GOL.download_path, WEBURL.inca),
             WEBURL.ly: LYWebCustom(driver, WEBURL.ly)
         }
         is_error = crawler_general(websites_no_code, url2class)
