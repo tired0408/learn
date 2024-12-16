@@ -19,6 +19,7 @@ from dateutil.relativedelta import relativedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from medicine_utils import analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer, WEBURL
 from crawler_util import select_date_1, init_chrome
 
@@ -588,73 +589,86 @@ def get_deliver_goods(date_value):
         rd.append({"客户": row["客户"], "商品名称": row["物料名称"], "数量": row["数量"]})
     print("打开浏览器，读取发送给客户的数据")
     driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
-    driver.get("https://i.wanbang.net/home/")
-    # 登录网页
-    ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "account")))
-    ele.send_keys("18626002881")
-    driver.find_element(By.ID, "pwd").send_keys("Scs@5085618")
-    driver.find_element(By.CLASS_NAME, "btn-login").click()
-    # 进入发货数据查找页面
-    now_handle = len(driver.window_handles)
-    ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='协同办公']")))
-    ele.click()
-    WebDriverWait(driver, 30).until(lambda d: len(d.window_handles) > now_handle)
-    driver.switch_to.window(driver.window_handles[-1])
-    ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='我的']")))
-    ele.click()
-    WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "myFlowList-page-title")))
-    start_date = date_value
-    end_date = datetime.datetime.now()
-    end_date = (end_date - relativedelta(days=1))
-    pattern = "//div[contains(@class, 'el-date-editor')]/input"
-    ele = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, pattern)))
-    ele.click()
-    left_container = driver.find_element(By.CLASS_NAME, "is-left")
-    right_container = driver.find_element(By.CLASS_NAME, "is-right")
-    left_click_btn = left_container.find_element(By.CLASS_NAME, "el-icon-arrow-left")
-    left_label_ele = left_container.find_element(By.XPATH, "./div/div")
-    right_click_btn = right_container.find_element(By.CLASS_NAME, "el-icon-arrow-right")
-    right_label_ele = right_container.find_element(By.XPATH, "./div/div")
-    date_pattern = "%Y 年 %m 月"
-    day_pattern = [".//span[contains(text(), '", "')]/ancestor::td[@class='available']"]
-    select_date_1(start_date, end_date, left_label_ele, right_label_ele, left_container, right_container, date_pattern, day_pattern,
-                  left_click_btn, right_click_btn)
-    ele = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='查询']")))
-    ele.click()
-    time.sleep(1)
-    while True:
-        index = 0
+    action = ActionChains(driver)
+    for user, passwd in [
+        ["18626002881", "Scs@5085618"],
+        ["18750776934", "ZGh134679"]
+    ]:
+        # 登录网页
+        driver.get("https://i.wanbang.net/home/")
+        c1 = EC.visibility_of_element_located((By.ID, "home-user_name"))
+        c2 = EC.visibility_of_element_located((By.ID, "account"))
+        ele = WebDriverWait(driver, 30).until(EC.any_of(c1, c2))
+        if ele.get_attribute("id") == "home-user_name":
+            action.move_to_element(ele).perform()
+            logout = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.XPATH, f"//li[@data-app='logout']")))
+            logout.click()
+        # 登录用户
+        ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "account")))
+        ele.send_keys(user)
+        driver.find_element(By.ID, "pwd").send_keys(passwd)
+        driver.find_element(By.CLASS_NAME, "btn-login").click()
+        # 进入发货数据查找页面
+        now_handle = len(driver.window_handles)
+        ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='协同办公']")))
+        ele.click()
+        WebDriverWait(driver, 30).until(lambda d: len(d.window_handles) > now_handle)
+        driver.switch_to.window(driver.window_handles[-1])
+        ele = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.XPATH, "//span[text()='我的']")))
+        ele.click()
+        WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "myFlowList-page-title")))
+        start_date = date_value
+        end_date = datetime.datetime.now()
+        end_date = (end_date - relativedelta(days=1))
+        pattern = "//div[contains(@class, 'el-date-editor')]/input"
+        ele = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, pattern)))
+        ele.click()
+        left_container = driver.find_element(By.CLASS_NAME, "is-left")
+        right_container = driver.find_element(By.CLASS_NAME, "is-right")
+        left_click_btn = left_container.find_element(By.CLASS_NAME, "el-icon-arrow-left")
+        left_label_ele = left_container.find_element(By.XPATH, "./div/div")
+        right_click_btn = right_container.find_element(By.CLASS_NAME, "el-icon-arrow-right")
+        right_label_ele = right_container.find_element(By.XPATH, "./div/div")
+        date_pattern = "%Y 年 %m 月"
+        day_pattern = [".//span[contains(text(), '", "')]/ancestor::td[@class='available']"]
+        select_date_1(start_date, end_date, left_label_ele, right_label_ele, left_container, right_container, date_pattern, day_pattern,
+                    left_click_btn, right_click_btn)
+        ele = WebDriverWait(driver, 30).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='查询']")))
+        ele.click()
+        time.sleep(1)
         while True:
-            data_container = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "cf-flex-content-wrap")))
-            if "loading" in data_container.get_attribute("class"):
-                WebDriverWait(data_container, 10).until(lambda d: "loading" not in d.get_attribute("class"))
-            table_container = (By.XPATH, ".//div[contains(@class, 'el-table__body-wrapper is-scrolling')]")
-            table_container = WebDriverWait(data_container, 10).until(EC.visibility_of_element_located(table_container))
-            eles = table_container.find_elements(By.TAG_NAME, "tr")
-            if index >= len(eles):
-                break
-            ele = eles[index]
-            eles = ele.find_elements(By.TAG_NAME, "td")
-            ele = eles[3]
-            if "产品发货" not in ele.text:
+            index = 0
+            while True:
+                data_container = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "cf-flex-content-wrap")))
+                if "loading" in data_container.get_attribute("class"):
+                    WebDriverWait(data_container, 10).until(lambda d: "loading" not in d.get_attribute("class"))
+                table_container = (By.XPATH, ".//div[contains(@class, 'el-table__body-wrapper is-scrolling')]")
+                table_container = WebDriverWait(data_container, 10).until(EC.visibility_of_element_located(table_container))
+                eles = table_container.find_elements(By.TAG_NAME, "tr")
+                if index >= len(eles):
+                    break
+                ele = eles[index]
+                eles = ele.find_elements(By.TAG_NAME, "td")
+                ele = eles[3]
+                if "产品发货" not in ele.text:
+                    index += 1
+                    continue
+                ele.click()
+                detail_container = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "SDK_approval-detail-container")))
+                client_name = (By.XPATH, "//span[text()='客户']/following-sibling::span[1]/span/span")
+                client_name = WebDriverWait(driver, 30).until(EC.visibility_of_element_located(client_name))
+                client_name = client_name.text
+                detail_trs = detail_container.find_element(By.CLASS_NAME, "cf-response-table-tbody")
+                detail_trs = detail_container.find_elements(By.TAG_NAME, "tr")
+                for dtr in detail_trs[1:-1]:
+                    detail_tds = dtr.find_elements(By.TAG_NAME, "td")
+                    rd.append({"客户": client_name, "商品名称": detail_tds[2].text, "数量": float(detail_tds[4].text)})
                 index += 1
-                continue
-            ele.click()
-            detail_container = WebDriverWait(driver, 30).until(EC.visibility_of_element_located((By.ID, "SDK_approval-detail-container")))
-            client_name = (By.XPATH, "//span[text()='客户']/following-sibling::span[1]/span/span")
-            client_name = WebDriverWait(driver, 30).until(EC.visibility_of_element_located(client_name))
-            client_name = client_name.text
-            detail_trs = detail_container.find_element(By.CLASS_NAME, "cf-response-table-tbody")
-            detail_trs = detail_container.find_elements(By.TAG_NAME, "tr")
-            for dtr in detail_trs[1:-1]:
-                detail_tds = dtr.find_elements(By.TAG_NAME, "td")
-                rd.append({"客户": client_name, "商品名称": detail_tds[2].text, "数量": float(detail_tds[4].text)})
-            index += 1
-            driver.find_element(By.CLASS_NAME, "cf-link-arrow-l").click()
-        next_page_btn = driver.find_element(By.CLASS_NAME, "cf-arrow-right")
-        if "disabled" in next_page_btn.get_attribute("class"):
-            break
-        next_page_btn.click()
+                driver.find_element(By.CLASS_NAME, "cf-link-arrow-l").click()
+            next_page_btn = driver.find_element(By.CLASS_NAME, "cf-arrow-right")
+            if "disabled" in next_page_btn.get_attribute("class"):
+                break
+            next_page_btn.click()
     print("关闭浏览器")
     driver.quit()
     print("保存发货数据")
