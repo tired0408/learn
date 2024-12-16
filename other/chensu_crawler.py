@@ -19,7 +19,7 @@ from dateutil.relativedelta import relativedelta
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from medicine_utils import analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer
+from medicine_utils import analyze_website, SPFJWeb, TCWeb, DruggcWeb, LYWeb, INCAWeb, CaptchaSocketServer, WEBURL
 from crawler_util import select_date_1, init_chrome
 
 class Golbal:
@@ -549,9 +549,9 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
         print("抓取无验证码的网站数据")
         driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
         url2class: Dict[str, WebAbstract] = {
-            SPFJWeb.url: SPFJWebCustom(driver),
-            INCAWeb.url: INCAWebCustom(driver, GOL.download_path),
-            LYWeb.url: LYWebCustom(driver)
+            WEBURL.spfj: SPFJWebCustom(driver, WEBURL.spfj),
+            WEBURL.inca: INCAWebCustom(driver, WEBURL.inca),
+            WEBURL.ly: LYWebCustom(driver, WEBURL.ly)
         }
         is_error = crawler_general(websites_no_code, url2class)
         if is_error:
@@ -563,8 +563,10 @@ def crawler_websites_data(websites_by_code: List[dict], websites_no_code: List[d
         sock = CaptchaSocketServer()
         driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path)
         url2class: Dict[str, WebAbstract] = {
-            TCWeb.url: TCWebCustom(driver, sock),
-            DruggcWeb.url: DruggcWebCustom(driver, sock, GOL.download_path)
+            WEBURL.xm_tc: TCWebCustom(driver, sock, WEBURL.xm_tc),
+            WEBURL.fj_tc: TCWebCustom(driver, sock, WEBURL.fj_tc),
+            WEBURL.sm_tc: TCWebCustom(driver, sock, WEBURL.sm_tc),
+            WEBURL.druggc: DruggcWebCustom(driver, sock, GOL.download_path, WEBURL.druggc)
         }
         crawler_general(websites_by_code, url2class)
         print("关闭浏览器")

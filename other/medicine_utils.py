@@ -71,11 +71,13 @@ def analyze_website(path, ignore_names):
     clients_names = []
     # 网站的验证码情况
     code_condition = {
-        SPFJWeb.url: False,
-        INCAWeb.url: False,
-        LYWeb.url: False,
-        TCWeb.url: True,
-        DruggcWeb.url: True
+        WEBURL.spfj: False,
+        WEBURL.inca: False,
+        WEBURL.ly: False,
+        WEBURL.xm_tc: True,
+        WEBURL.fj_tc: True,
+        WEBURL.sm_tc: True,
+        WEBURL.druggc: True
     }
     for _, row in websites.iterrows():
         data = {
@@ -147,9 +149,9 @@ class CaptchaSocketServer:
 
 class SPFJWeb:
     """国控系网站的数据抓取"""
-    url = r"https://www.sinopharm-fj.com/spfj/flows/"
-
-    def __init__(self, driver) -> None:
+    
+    def __init__(self, driver, url) -> None:
+        self.url = url
         self.driver: Chrome = driver
 
     def login(self, user, password, district_name):
@@ -217,9 +219,9 @@ class SPFJWeb:
 
 class INCAWeb:
     """片仔癀漳州医药有限公司的数据抓取"""
-    url = r"http://59.59.56.90:8094/ns/"
 
-    def __init__(self, driver, download_path) -> None:
+    def __init__(self, driver, download_path, url) -> None:
+        self.url = url
         self.path = download_path
         self.driver: Chrome = driver
 
@@ -233,7 +235,7 @@ class INCAWeb:
         clear_and_send(self.driver.find_element(By.ID, "inputCode"), self.driver.find_element(By.ID, "checkCode").text)
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.TAG_NAME, "option")))
         self.driver.find_element(By.ID, "login_link").click()
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "tree1")))
+        WebDriverWait(self.driver, 30).until(EC.visibility_of_element_located((By.ID, "tree1")))
         print(f"[片仔癀漳州]{user}用户已登录")
 
     def get_inventory(self):
@@ -270,13 +272,14 @@ class INCAWeb:
         获取发货数据
         return: [(商品名称, 发货数量), ...]
         """
+        def sale_download():
+            button = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "Button1")))
+            button.click()
+
         self.show_table_data("客户网络服务", "发货明细查询", start_date=start_date, end_date=end_date)
-        button = WebDriverWait(self.driver, 60).until(EC.element_to_be_clickable((By.ID, "Button1")))
-        button.click()
-        file_name = wait_download(self.path, "发货明细下载")
-        file_path = os.path.join(self.path, file_name)
-        print(f"文件下载已完成:{file_path}")
+        file_name = wait_download(self.path, "发货明细下载", sale_download)
         time.sleep(1)
+        file_path = os.path.join(self.path, file_name)
         data = pd.read_excel(file_path, header=0)
         rd = []
         for _, row in data.iterrows():
@@ -354,9 +357,9 @@ class INCAWeb:
 
 class LYWeb:
     """鹭燕网站的数据抓取"""
-    url = r"http://www.luyan.com.cn/index.php"
 
-    def __init__(self, driver) -> None:
+    def __init__(self, driver, url) -> None:
+        self.url = url
         self.driver: Chrome = driver
 
     def login(self, user, password, district_name):
@@ -438,9 +441,9 @@ class LYWeb:
 
 class TCWeb:
     """同春医药网站的数据抓取"""
-    url = r"http://tc.tcyy.com.cn:8888/exm/login.jsp"
 
-    def __init__(self, driver, captcha) -> None:
+    def __init__(self, driver, captcha, url) -> None:
+        self.url = url
         self.driver: Chrome = driver
         self.captcha: CaptchaSocketServer = captcha
 
@@ -450,10 +453,13 @@ class TCWeb:
             try:
                 WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.ID, "imgLogin")))
                 clear_and_send(self.driver.find_element(By.ID, "txt_UserName"), user)
+                time.sleep(0.2)
                 clear_and_send(self.driver.find_element(By.ID, "txtPassWord"), password)
+                time.sleep(0.2)
                 captcha_value = self.captcha.recv()
                 print(f"输入验证码:{captcha_value}")
                 clear_and_send(self.driver.find_element(By.ID, "txtVerifyCode"), captcha_value)
+                time.sleep(0.2)
                 self.driver.find_element(By.ID, "imgLogin").click()
                 WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.ID, "btnSearch")))
             except UnexpectedAlertPresentException as e:
@@ -513,6 +519,7 @@ class TCWeb:
                     break
                 product_name = td_list[3].text + td_list[4].text
                 sales = td_list[7].text
+                sales = sales.strip()
                 sales = 0 if sales == "" else int(sales)
                 rd.append([product_name, sales])
         except NoSuchElementException:
@@ -523,9 +530,9 @@ class TCWeb:
 
 class DruggcWeb:
     """片仔癀宏仁医药有限公司网站的数据抓取"""
-    url = r"https://zlcx.hrpzh.com/drugqc/home/login?type=flowLogin"
 
-    def __init__(self, driver, captcha, download_path) -> None:
+    def __init__(self, driver, captcha, download_path, url) -> None:
+        self.url = url
         self.path = download_path
         self.driver: Chrome = driver
         self.captcha: CaptchaSocketServer = captcha
@@ -647,12 +654,12 @@ class DruggcWeb:
 
     def __get_data_by_excel(self, deal_func, name):
         """通过导出文件获取数据"""
-        button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
-        button.click()
-        file_name = wait_download(self.path, f"{name}{datetime.now().strftime('%Y%m%d%H')}")
-        file_path = os.path.join(self.path, file_name)
-        print(f"文件下载已完成:{file_path}")
+        def data_download():
+            button = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.ID, "export")))
+            button.click()
+        file_name = wait_download(self.path, f"{name}{datetime.now().strftime('%Y%m%d%H')}", data_download)
         time.sleep(1)
+        file_path = os.path.join(self.path, file_name)
         data = pd.read_excel(file_path, header=1)
         rd = []
         for _, row in data.iterrows():
@@ -661,15 +668,38 @@ class DruggcWeb:
         return rd
 
 
-def wait_download(download_path, name):
+def wait_download(download_path, name, download_func):
     """等待开始下载"""
+    files = os.listdir(download_path)
+    for fname in files:
+        if re.match(f"^{name}" + r".*\.xlsx$", fname) is None:
+            continue
+        print(f"清理下载前就存在的文件数据:{fname}")
+        os.remove(os.path.join(download_path, fname))
+    print(f"开始下载相关的文件信息:{name}")
+    download_func()
     st = time.time()
     while True:
         if (time.time() - st) > 600:
             raise Exception("Waiting download timeout.")
         files = os.listdir(download_path)
-        for file_name in files:
-            if re.match(f"^{name}" + r".*\.xlsx$", file_name) is not None:
-                return file_name
-        else:
-            continue
+        for fname in files:
+            if re.match(f"^{name}" + r".*\.xlsx$", fname) is None:
+                continue
+            print(f"文件下载已完成:{fname}")
+            return fname    
+
+
+class _WebUrl:
+    """网站地址"""
+
+    def __init__(self) -> None:
+        self.spfj = r"https://www.sinopharm-fj.com/spfj/flows/"  # 国控系网站
+        self.inca = r"http://59.59.56.90:8094/ns/"  # 片仔癀漳州
+        self.ly = r"http://www.luyan.com.cn/index.php"  # 鹭燕
+        self.xm_tc = r"http://tc.tcyy.com.cn:8888/exm/login.jsp"  # 厦门同春
+        self.fj_tc = r"http://tc.tcyy.com.cn:8888/etcyy/"  # 福建同春
+        self.sm_tc = r"http://tc.tcyy.com.cn:8888/esmtc/"  # 三明同春
+        self.druggc = r"https://zlcx.hrpzh.com/drugqc/home/login?type=flowLogin"  # 厦门片仔癀
+
+WEBURL = _WebUrl()
