@@ -483,7 +483,8 @@ class TCWeb:
         WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.XPATH, "//table[@border='1']")))
         rd = []
         try:
-            values = self.driver.find_element(By.XPATH, "//table[@border='1']").find_elements(By.TAG_NAME, "tr")
+            values = self.driver.find_element(By.XPATH, "//strong[contains(text(), '货品ID')]/ancestor::table[@border='1']")
+            values = values.find_elements(By.TAG_NAME, "tr")
             for each_v in values[1:]:
                 each_v = each_v.find_elements(By.TAG_NAME, "td")
                 product_name = each_v[1].text + each_v[2].text
@@ -513,11 +514,14 @@ class TCWeb:
         rd = []
         try:
             values = table.find_elements(By.TAG_NAME, "tr")
+            title = [ele.text for ele in values[0].find_elements(By.TAG_NAME, "td")]
+            name_i = title.index("品名")
+            specification_i = title.index("规格")
             for tr_ele in values[1:]:
                 td_list = tr_ele.find_elements(By.TAG_NAME, "td")
                 if td_list[0].text == "":
                     break
-                product_name = td_list[3].text + td_list[4].text
+                product_name = td_list[name_i].text + td_list[specification_i].text
                 sales = td_list[7].text
                 sales = sales.strip()
                 sales = 0 if sales == "" else int(sales)

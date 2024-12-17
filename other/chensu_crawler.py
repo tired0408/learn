@@ -34,8 +34,8 @@ class Golbal:
         self.save_path = None  # 保存地址
         self.title = None  # 导出文件标题
         self.widths = None  # 导出文件每列的宽度
-        self.save_datas: Dict[str, SaveData] = {}
-        self.web_datas: Dict[str, WebData] = {}
+        self.save_datas: Dict[str, SaveData] = {}  # 客户名称+客户产品名称
+        self.web_datas: Dict[str, WebData] = {}  # 客户名称+产品标准名称
 
     def set_data(self, path, start_date) -> None:
         """根据选择设置数据"""
@@ -68,7 +68,7 @@ class SaveData:
             reference (str): 参考信息
         """
         self.first_business = client_name  # 一级商业
-        self.production_name = name  # 商品信息
+        self.production_name = name  # 商品标准名称
         self.inventory = 0  # 本期库存
         self.date = now_date  # 库存日期及库存获取日期
         self.on_road = None  # 在途
@@ -144,29 +144,18 @@ class DataToExcel:
     def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas):
         """将数据写入EXCEL表格"""
         web_datas: Dict[str, WebData] = {}
-        # 合并相同数据
-        for id, data in GOL.web_datas.items():
-            each_save_data: SaveData = GOL.save_datas[id]
-            standard_id = get_id(each_save_data.first_business, each_save_data.production_name)
-            if standard_id in web_datas:
-                web_datas[standard_id].inventory += data.inventory
-                web_datas[standard_id].three_month_sale += data.three_month_sale
-                web_datas[standard_id].month_sale += data.month_sale
-                web_datas[standard_id].recent_sale += data.recent_sale
-            else:
-                web_datas[standard_id] = data
         # 获取进货数据
         for _, row in restock_datas.iterrows():
-            id = get_id(row["客户"], row["商品名称"])
-            if id in web_datas:
-                web_datas[id].recent_should_restock += 0 if pd.isna(row["数量"]) else row["数量"]
+            standard_id = get_id(row["客户"], row["商品名称"])
+            if standard_id in web_datas:
+                web_datas[standard_id].recent_should_restock += 0 if pd.isna(row["数量"]) else row["数量"]
         # 获取上期数据
         last_datas = pd.read_excel(GOL.last_data_path)
         for _, row in last_datas.iterrows():
-            id = get_id(row["一级商业*"], row["商品信息*"])
-            if id in web_datas:
-                web_datas[id].last_inventory = 0 if pd.isna(row["本期库存*"]) else row["本期库存*"]
-                web_datas[id].last_on_road = 0 if pd.isna(row["在途"]) else row["在途"]
+            standard_id = get_id(row["一级商业*"], row["商品信息*"])
+            if standard_id in web_datas:
+                web_datas[standard_id].last_inventory = 0 if pd.isna(row["本期库存*"]) else row["本期库存*"]
+                web_datas[standard_id].last_on_road = 0 if pd.isna(row["在途"]) else row["在途"]
         save_datas: Dict[str, SaveData] = {}
         for _, data in GOL.save_datas.items():
             standard_id = get_id(data.first_business, data.production_name)
@@ -448,13 +437,14 @@ def read_production_database(names):
         conversion_ratio = int(row["盒支转换"])
 
         now_date = datetime.datetime.today()
-        data_id = get_id(client_name, client_production_name)
+        client_production_id = get_id(client_name, client_production_name)
+        standard_production_id = get_id(client_name, production_standard_name)
         save_data = SaveData(client_name, production_standard_name, now_date, reference)
         web_data = WebData()
         web_data.client_pname = client_production_name
         web_data.conversion_ratio = conversion_ratio
-        GOL.save_datas[data_id] = save_data
-        GOL.web_datas[data_id] = web_data
+        GOL.save_datas[client_production_id] = save_data
+        GOL.web_datas[standard_production_id] = web_data
 
 
 def read_breakpoint() -> Tuple[set, Dict[str, SaveData]]:
@@ -508,16 +498,19 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             # 不同账号重复商品，只取其中一个账户
             this_account: Dict[str, WebData] = web_class.export_deliver(client_name)
             for id, value in this_account.items():
-                if id not in GOL.web_datas:
-                    _, client_pname = split_id(id)
-                    value.client_pname = client_pname
+                client_name, client_production_name = split_id(id)
+                if id not in GOL.save_datas:
+                    save_data_value = SaveData(client_name, client_production_name, datetime.datetime.today(), "未在产品信息库找到")
+                    GOL.save_datas[id] = save_data_value
+                GOL.save_datas[id].user = user
+                standard_name = GOL.save_datas[id].production_name
+                standard_id = get_id(client_name, standard_name)
+                if standard_id not in GOL.web_datas:
+                    value.client_pname = client_production_name
                     value.conversion_ratio = 1
                     GOL.web_datas[id] = value
-                    save_data_value = SaveData(client_name, client_pname, datetime.datetime.today(), "未在产品信息库找到")
-                    GOL.save_datas[id] = save_data_value
                     continue
-                GOL.save_datas[id].user = user
-                web_data = GOL.web_datas[id]
+                web_data = GOL.web_datas[standard_id]
                 if isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id:
                     web_data.inventory += value.inventory * web_data.conversion_ratio
                     web_data.month_sale += value.month_sale * web_data.conversion_ratio
@@ -537,8 +530,9 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             for key in data_key:
                 if client_name not in key:
                     continue
-                GOL.web_datas.pop(key)
-                GOL.save_datas.pop(key)
+                client_name, standard_name = split_id(key)
+                web_data = GOL.web_datas.pop(key)
+                GOL.save_datas.pop(get_id(client_name, web_data.client_pname))
             print("-" * 150)
             return True
     return False
@@ -588,12 +582,12 @@ def get_deliver_goods(date_value):
     for _, row in deliver_data.iterrows():
         rd.append({"客户": row["客户"], "商品名称": row["物料名称"], "数量": row["数量"]})
     print("打开浏览器，读取发送给客户的数据")
-    driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
-    action = ActionChains(driver)
     for user, passwd in [
         ["18626002881", "Scs@5085618"],
         ["18750776934", "ZGh134679"]
     ]:
+        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
+        action = ActionChains(driver)
         # 登录网页
         driver.get("https://i.wanbang.net/home/")
         c1 = EC.visibility_of_element_located((By.ID, "home-user_name"))
@@ -669,8 +663,8 @@ def get_deliver_goods(date_value):
             if "disabled" in next_page_btn.get_attribute("class"):
                 break
             next_page_btn.click()
-    print("关闭浏览器")
-    driver.quit()
+        print("关闭浏览器")
+        driver.quit()
     print("保存发货数据")
     rd = pd.DataFrame(rd)
     rd = rd.sort_values(by=["客户", "商品名称"])
