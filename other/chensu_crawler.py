@@ -584,7 +584,8 @@ def get_deliver_goods(date_value):
     print("打开浏览器，读取发送给客户的数据")
     for user, passwd in [
         ["18626002881", "Scs@5085618"],
-        ["18750776934", "ZGh134679"]
+        ["18750776934", "ZGh134679"],
+        ["18626005806", "Wh@940110"]
     ]:
         driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
         action = ActionChains(driver)
