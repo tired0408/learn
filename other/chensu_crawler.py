@@ -141,9 +141,9 @@ class DataToExcel:
         length = (utf8_length - length) / 2 + length
         return int(length) + 2
 
-    def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas):
+    def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas: pd.DataFrame):
         """将数据写入EXCEL表格"""
-        web_datas: Dict[str, WebData] = {}
+        web_datas: Dict[str, WebData] = copy.deepcopy(GOL.web_datas)
         # 获取进货数据
         for _, row in restock_datas.iterrows():
             standard_id = get_id(row["客户"], row["商品名称"])
@@ -416,7 +416,9 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
 
 def get_id(client_name:str, production_name:str):
     """根据客户名称及客户商品名称(或商品标准名称)获取唯一ID"""
-    return f"{client_name}@@{production_name}"
+    rd = f"{client_name}@@{production_name}"
+    rd = rd.replace(" ", "").replace("\t", "").replace("\n", "")
+    return rd
 
 def split_id(id:str):
     """根据ID分割出客户名称及客户商品名称"""
@@ -495,23 +497,26 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
         web_class = url2class[website_url]
         try:
             web_class.login(**data)
-            # 不同账号重复商品，只取其中一个账户
+            # 不同账号重复商品，只取其中一个账户。同一账户同一商品则进行相加
             this_account: Dict[str, WebData] = web_class.export_deliver(client_name)
             for id, value in this_account.items():
                 client_name, client_production_name = split_id(id)
-                if id not in GOL.save_datas:
+                if id not in GOL.save_datas.keys():
+                    print(f"未在产品信息库中找到:{id}")
                     save_data_value = SaveData(client_name, client_production_name, datetime.datetime.today(), "未在产品信息库找到")
                     GOL.save_datas[id] = save_data_value
-                GOL.save_datas[id].user = user
+                data_info = GOL.save_datas[id]
+                data_info.user = user
                 standard_name = GOL.save_datas[id].production_name
                 standard_id = get_id(client_name, standard_name)
-                if standard_id not in GOL.web_datas:
+                if standard_id not in GOL.web_datas.keys():
+                    print(f"没有在网页数据里面:{id}")
                     value.client_pname = client_production_name
                     value.conversion_ratio = 1
                     GOL.web_datas[id] = value
                     continue
                 web_data = GOL.web_datas[standard_id]
-                if isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id:
+                if (isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id) or data_info.user == user:
                     web_data.inventory += value.inventory * web_data.conversion_ratio
                     web_data.month_sale += value.month_sale * web_data.conversion_ratio
                     web_data.recent_sale += value.recent_sale * web_data.conversion_ratio

@@ -533,7 +533,7 @@ class TCWeb:
 
 
 class DruggcWeb:
-    """片仔癀宏仁医药有限公司网站的数据抓取"""
+    """厦门片仔癀宏仁医药有限公司网站的数据抓取"""
 
     def __init__(self, driver, captcha, download_path, url) -> None:
         self.url = url
