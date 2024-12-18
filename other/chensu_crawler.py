@@ -506,7 +506,6 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     save_data_value = SaveData(client_name, client_production_name, datetime.datetime.today(), "未在产品信息库找到")
                     GOL.save_datas[id] = save_data_value
                 data_info = GOL.save_datas[id]
-                data_info.user = user
                 standard_name = GOL.save_datas[id].production_name
                 standard_id = get_id(client_name, standard_name)
                 if standard_id not in GOL.web_datas.keys():
@@ -522,6 +521,7 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     web_data.recent_sale += value.recent_sale * web_data.conversion_ratio
                     web_data.three_month_sale += value.three_month_sale * web_data.conversion_ratio
                 else:
+                    data_info.user = user
                     web_data.inventory = value.inventory * web_data.conversion_ratio
                     web_data.month_sale = value.month_sale * web_data.conversion_ratio
                     web_data.recent_sale = value.recent_sale * web_data.conversion_ratio
