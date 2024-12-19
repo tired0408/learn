@@ -35,7 +35,7 @@ class Golbal:
         self.title = None  # 导出文件标题
         self.widths = None  # 导出文件每列的宽度
         self.save_datas: Dict[str, SaveData] = {}  # 客户名称+客户产品名称
-        self.web_datas: Dict[str, WebData] = {}  # 客户名称+产品标准名称
+        self.web_datas: Dict[str, WebData] = {}  # 客户名称+客户产品名称
 
     def set_data(self, path, start_date) -> None:
         """根据选择设置数据"""
@@ -143,7 +143,18 @@ class DataToExcel:
 
     def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas: pd.DataFrame):
         """将数据写入EXCEL表格"""
-        web_datas: Dict[str, WebData] = copy.deepcopy(GOL.web_datas)
+        web_datas: Dict[str, WebData] = {}
+        # 合并相同数据
+        for id, data in GOL.web_datas.items():
+            each_save_data: SaveData = GOL.save_datas[id]
+            standard_id = get_id(each_save_data.first_business, each_save_data.production_name)
+            if standard_id in web_datas:
+                web_datas[standard_id].inventory += data.inventory
+                web_datas[standard_id].three_month_sale += data.three_month_sale
+                web_datas[standard_id].month_sale += data.month_sale
+                web_datas[standard_id].recent_sale += data.recent_sale
+            else:
+                web_datas[standard_id] = data
         # 获取进货数据
         for _, row in restock_datas.iterrows():
             standard_id = get_id(row["客户"], row["商品名称"])
@@ -345,7 +356,7 @@ class TCWebCustom(TCWeb, WebAbstract):
     def export_deliver(self, client_name) -> Dict[str, WebData]:
         rd = collections.defaultdict(WebData)
         now_date = datetime.datetime.now()
-        # 数据实时更新，新增当天销售数据
+        # 获取库存
         inventory_list = super().get_inventory()
         for product_name, amount in inventory_list:
             id = get_id(client_name, product_name)
@@ -355,19 +366,21 @@ class TCWebCustom(TCWeb, WebAbstract):
         for product_name, amount in datas:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
-        
+        # 获取近三个月销量
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_product_flow(start_date, end_date)
         for product_name, sales in datas:
             id = get_id(client_name, product_name)
             rd[id].three_month_sale += sales
-
+        # 获取当月销量
         datas = super().get_product_flow(now_date.replace(day=1).strftime("%Y-%m-%d"), now_date.strftime("%Y-%m-%d"))
         for product_name, sales in datas:
+            if "胰岛素注射液" in product_name:
+                print(33333333333333333333333)
             id = get_id(client_name, product_name)
             rd[id].month_sale += sales
-        
+        # 获取近期销量
         start_date = GOL.last_tidy_date.strftime("%Y-%m-%d")
         end_date = (now_date - relativedelta(days=1)).strftime("%Y-%m-%d")
         datas = super().get_product_flow(start_date, end_date)
@@ -440,13 +453,12 @@ def read_production_database(names):
 
         now_date = datetime.datetime.today()
         client_production_id = get_id(client_name, client_production_name)
-        standard_production_id = get_id(client_name, production_standard_name)
         save_data = SaveData(client_name, production_standard_name, now_date, reference)
         web_data = WebData()
         web_data.client_pname = client_production_name
         web_data.conversion_ratio = conversion_ratio
         GOL.save_datas[client_production_id] = save_data
-        GOL.web_datas[standard_production_id] = web_data
+        GOL.web_datas[client_production_id] = web_data
 
 
 def read_breakpoint() -> Tuple[set, Dict[str, SaveData]]:
@@ -501,31 +513,33 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             this_account: Dict[str, WebData] = web_class.export_deliver(client_name)
             for id, value in this_account.items():
                 client_name, client_production_name = split_id(id)
-                if id not in GOL.save_datas.keys():
-                    print(f"未在产品信息库中找到:{id}")
+                if id not in GOL.web_datas.keys():
                     save_data_value = SaveData(client_name, client_production_name, datetime.datetime.today(), "未在产品信息库找到")
                     GOL.save_datas[id] = save_data_value
-                data_info = GOL.save_datas[id]
-                standard_name = GOL.save_datas[id].production_name
-                standard_id = get_id(client_name, standard_name)
-                if standard_id not in GOL.web_datas.keys():
-                    print(f"没有在网页数据里面:{id}")
+                    
                     value.client_pname = client_production_name
                     value.conversion_ratio = 1
                     GOL.web_datas[id] = value
                     continue
-                web_data = GOL.web_datas[standard_id]
-                if (isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id) or data_info.user == user:
-                    web_data.inventory += value.inventory * web_data.conversion_ratio
-                    web_data.month_sale += value.month_sale * web_data.conversion_ratio
-                    web_data.recent_sale += value.recent_sale * web_data.conversion_ratio
-                    web_data.three_month_sale += value.three_month_sale * web_data.conversion_ratio
+                save_data_info = GOL.save_datas[id]
+                web_data_info = GOL.web_datas[id]
+                if (isinstance(web_class, DruggcWebCustom) and "复方α-酮酸片" in id):
+                    save_data_info.user = user
+                    web_data_info.inventory += value.inventory * web_data_info.conversion_ratio
+                    web_data_info.month_sale += value.month_sale * web_data_info.conversion_ratio
+                    web_data_info.recent_sale += value.recent_sale * web_data_info.conversion_ratio
+                    web_data_info.three_month_sale += value.three_month_sale * web_data_info.conversion_ratio
+                elif save_data_info.user == user:
+                    web_data_info.inventory += value.inventory * web_data_info.conversion_ratio
+                    web_data_info.month_sale += value.month_sale * web_data_info.conversion_ratio
+                    web_data_info.recent_sale += value.recent_sale * web_data_info.conversion_ratio
+                    web_data_info.three_month_sale += value.three_month_sale * web_data_info.conversion_ratio
                 else:
-                    data_info.user = user
-                    web_data.inventory = value.inventory * web_data.conversion_ratio
-                    web_data.month_sale = value.month_sale * web_data.conversion_ratio
-                    web_data.recent_sale = value.recent_sale * web_data.conversion_ratio
-                    web_data.three_month_sale = value.three_month_sale * web_data.conversion_ratio
+                    save_data_info.user = user
+                    web_data_info.inventory = value.inventory * web_data_info.conversion_ratio
+                    web_data_info.month_sale = value.month_sale * web_data_info.conversion_ratio
+                    web_data_info.recent_sale = value.recent_sale * web_data_info.conversion_ratio
+                    web_data_info.three_month_sale = value.three_month_sale * web_data_info.conversion_ratio
         except Exception:
             print("-" * 150)
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name},{user},{data['password']}")
@@ -535,9 +549,8 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
             for key in data_key:
                 if client_name not in key:
                     continue
-                client_name, standard_name = split_id(key)
-                web_data = GOL.web_datas.pop(key)
-                GOL.save_datas.pop(get_id(client_name, web_data.client_pname))
+                GOL.web_datas.pop(key)
+                GOL.save_datas.pop(key)
             print("-" * 150)
             return True
     return False
