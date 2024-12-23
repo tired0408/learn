@@ -51,8 +51,8 @@ class Golbal:
         self.save_path = os.path.join(path, f"发货分析表{now_day}.xls")
         self.deliver_path = os.path.join(path, f"发货数据总表{now_day}.xlsx")
         self.title = ["一级商业*", "商品信息*", "本期库存*", "库存日期*", "库存获取日期*", "在途", "备注", "参考信息",
-                        "所属账号", "当月销售数量", "近3个月月均销量", "库存周转天数"]
-        self.widths = [10, 10, 10, 12, 14, 10, 10, 10, 10, 13, 16, 13]
+                        "所属账号", "当日销售数量", "当月销售数量", "近3个月月均销量", "库存周转天数"]
+        self.widths = [10, 10, 10, 12, 14, 10, 10, 10, 10, 13, 13, 16, 13]
 
 GOL = Golbal()
 
@@ -75,6 +75,7 @@ class SaveData:
         self.remark = None  # 备注
         self.reference = reference  # 参考信息
         self.user = None # 所属账号名称
+        self.today_sales = 0  # 当日销售数量
         self.month_sales = 0  # 当月销售数量
         self.month_sales_average = None  # 近3个月月均销量
         self.inventory_turnover_days = None  # 库存周转天数
@@ -110,6 +111,7 @@ class WebData:
         self.three_month_sale = 0  # 近3个月销量
         self.month_sale = 0  # 当月销售数量
         self.recent_sale = 0  # 近期销量
+        self.today_sale = 0  # 当日销量
         
         self.recent_should_restock = 0  # 近期进货数量(厂家给的发货数量)
         self.last_inventory = 0  # 上期库存
@@ -144,7 +146,7 @@ class DataToExcel:
     def write_to_excel(self, breakpoint_data: Dict[str, SaveData], restock_datas: pd.DataFrame):
         """将数据写入EXCEL表格"""
         web_datas: Dict[str, WebData] = {}
-        # 合并相同数据
+        # 整理网站数据，合并相同产品
         for id, data in GOL.web_datas.items():
             each_save_data: SaveData = GOL.save_datas[id]
             standard_id = get_id(each_save_data.first_business, each_save_data.production_name)
@@ -153,6 +155,7 @@ class DataToExcel:
                 web_datas[standard_id].three_month_sale += data.three_month_sale
                 web_datas[standard_id].month_sale += data.month_sale
                 web_datas[standard_id].recent_sale += data.recent_sale
+                web_datas[standard_id].today_sale += data.today_sale
             else:
                 web_datas[standard_id] = data
         # 获取进货数据
@@ -167,6 +170,7 @@ class DataToExcel:
             if standard_id in web_datas:
                 web_datas[standard_id].last_inventory = 0 if pd.isna(row["本期库存*"]) else row["本期库存*"]
                 web_datas[standard_id].last_on_road = 0 if pd.isna(row["在途"]) else row["在途"]
+        # 整理所需保存数据
         save_datas: Dict[str, SaveData] = {}
         for _, data in GOL.save_datas.items():
             standard_id = get_id(data.first_business, data.production_name)
@@ -174,6 +178,7 @@ class DataToExcel:
                 continue
             web_data = web_datas[standard_id]
             data.inventory = web_data.inventory
+            data.today_sales = web_data.today_sale
             data.month_sales = web_data.month_sale
             average = data.cal_month_sales_average(web_data.three_month_sale)
             data.cal_turnover_days(average, web_data.inventory)
@@ -204,19 +209,20 @@ class DataToExcel:
             if data.reference is not None:
                 self.ws.write(row_i, 7, data.reference)
             self.ws.write(row_i, 8, data.user)
-            self.ws.write(row_i, 9, data.month_sales)
-            self.ws.write(row_i, 10, data.month_sales_average)
+            self.ws.write(row_i, 9, data.today_sales)
+            self.ws.write(row_i, 10, data.month_sales)
+            self.ws.write(row_i, 11, data.month_sales_average)
             if data.inventory_turnover_days is not None:
                 if data.inventory_turnover_days < 0:
-                    self.ws.write(row_i, 11, "动销缓慢")
+                    self.ws.write(row_i, 12, "动销缓慢")
                 elif data.inventory_turnover_days <= 15:
-                    self.ws.write(row_i, 11, data.inventory_turnover_days, color_style["red"])
+                    self.ws.write(row_i, 12, data.inventory_turnover_days, color_style["red"])
                 elif data.inventory_turnover_days <= 30:
-                    self.ws.write(row_i, 11, data.inventory_turnover_days, color_style["orange"])
+                    self.ws.write(row_i, 12, data.inventory_turnover_days, color_style["orange"])
                 elif data.inventory_turnover_days <= 45:
-                    self.ws.write(row_i, 11, data.inventory_turnover_days, color_style["green"])
+                    self.ws.write(row_i, 12, data.inventory_turnover_days, color_style["green"])
                 else:
-                    self.ws.write(row_i, 11, data.inventory_turnover_days)
+                    self.ws.write(row_i, 12, data.inventory_turnover_days)
         # 修改格式
         print("开始修改格式")
         for i, width in enumerate(GOL.widths):
@@ -255,12 +261,14 @@ class SPFJWebCustom(SPFJWeb, WebAbstract):
         for product_name, amount, _ in super().get_inventory():
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
+        # 获取当天销售数据
         if now_date.hour >= 23:
             datas = now_date.strftime("%Y-%m-%d")
             datas = super().purchase_sale_stock(datas, datas)
             for product_name, _, sales, _ in datas:
                 id = get_id(client_name, product_name)
                 rd[id].inventory += sales
+                rd[id].today_sale += sales
         # 获取近三个月销量
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
@@ -293,11 +301,13 @@ class INCAWebCustom(INCAWeb, WebAbstract):
         for product_name, amount, _ in inventory_list:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
+        # 获取当天销售数据
         datas = now_date.strftime("%Y-%m-%d")
         datas = super().get_sales(datas, datas)
         for product_name, amount in datas:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
+            rd[id].today_sale += amount
         
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
@@ -330,7 +340,14 @@ class LYWebCustom(LYWeb, WebAbstract):
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
         
+        # 获取当天销售数据
         now_date = datetime.datetime.now()
+        datas = now_date.strftime("%Y-%m-%d")
+        datas = super().purchase_sale_stock(datas)
+        for product_name, _, sales, _ in datas:
+            id = get_id(client_name, product_name)
+            rd[id].today_sale += sales
+
         start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date)
         for product_name, _, sales, _ in datas:
@@ -361,11 +378,13 @@ class TCWebCustom(TCWeb, WebAbstract):
         for product_name, amount in inventory_list:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
+        # 获取当日销售数据
         datas = now_date.strftime("%Y-%m-%d")
         datas = super().get_product_flow(datas, datas)
         for product_name, amount in datas:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
+            rd[id].today_sale += amount
         # 获取近三个月销量
         start_date = (now_date - relativedelta(months=3)).replace(day=1).strftime("%Y-%m-%d")
         end_date = (now_date.replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
@@ -395,13 +414,19 @@ class DruggcWebCustom(DruggcWeb, WebAbstract):
     def export_deliver(self, client_name) -> Dict[str, WebData]:
         rd = collections.defaultdict(WebData)
 
-        # TODO 厦门片仔癀的库存数据还未知
+        # 厦门片仔癀的库存数据还未知
         inventory_list = super().get_inventory()
         for product_name, amount, _ in inventory_list:
             id = get_id(client_name, product_name)
             rd[id].inventory += amount
-
+        # 获取当日销售数据
         now_date = datetime.datetime.now()
+        datas = now_date.strftime("%Y-%m-%d")
+        datas = super().get_sales(datas, datas)
+        for product_name, sales in datas:
+            id = get_id(client_name, product_name)
+            rd[id].today_sale += sales
+
         d1_end = now_date.replace(day=1) - relativedelta(days=1)
         d1 = d1_end.replace(day=1)
         d2_end = d1 - relativedelta(days=1)

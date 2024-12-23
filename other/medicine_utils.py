@@ -64,7 +64,6 @@ def analyze_website(path, ignore_names):
         1. 需要验证码的网站地址列表
         2. 不需要验证码的网站地址列表
         3. 客户名称列表
-
     """
     websites = pd.read_excel(path)
     websites_by_code, websites_no_code = [], []
