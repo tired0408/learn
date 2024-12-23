@@ -554,17 +554,20 @@ def crawler_general(datas: List[dict], url2class: Dict[str, WebAbstract]):
                     web_data_info.month_sale += value.month_sale * web_data_info.conversion_ratio
                     web_data_info.recent_sale += value.recent_sale * web_data_info.conversion_ratio
                     web_data_info.three_month_sale += value.three_month_sale * web_data_info.conversion_ratio
+                    web_data_info.today_sale += value.today_sale * web_data_info.conversion_ratio
                 elif save_data_info.user == user:
                     web_data_info.inventory += value.inventory * web_data_info.conversion_ratio
                     web_data_info.month_sale += value.month_sale * web_data_info.conversion_ratio
                     web_data_info.recent_sale += value.recent_sale * web_data_info.conversion_ratio
                     web_data_info.three_month_sale += value.three_month_sale * web_data_info.conversion_ratio
+                    web_data_info.today_sale += value.today_sale * web_data_info.conversion_ratio
                 else:
                     save_data_info.user = user
                     web_data_info.inventory = value.inventory * web_data_info.conversion_ratio
                     web_data_info.month_sale = value.month_sale * web_data_info.conversion_ratio
                     web_data_info.recent_sale = value.recent_sale * web_data_info.conversion_ratio
                     web_data_info.three_month_sale = value.three_month_sale * web_data_info.conversion_ratio
+                    web_data_info.today_sale = value.today_sale * web_data_info.conversion_ratio
         except Exception:
             print("-" * 150)
             print(f"脚本运行出现异常, 出错的截至问题公司:{client_name},{user},{data['password']}")
