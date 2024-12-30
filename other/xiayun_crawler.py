@@ -10,6 +10,7 @@ import calendar
 import traceback
 import xlwings as xw
 import pandas as pd
+from xlwings.main import Sheet
 from dateutil.relativedelta import relativedelta
 from decimal import Decimal, InvalidOperation
 from abc import ABC, abstractmethod
@@ -24,7 +25,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from typing import Dict, List
 from datetime import timedelta, date, datetime
+from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl import load_workbook
+from openpyxl.cell import Cell
+from openpyxl.styles import PatternFill
+from openpyxl.styles import NamedStyle
 from openpyxl.utils.cell import get_column_letter, column_index_from_string
 warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
 
@@ -972,7 +977,7 @@ class ElemeData:
         # 计算总和,并在最后一行插入合计行
         sum_row_i = ws.max_row + 1
         ws.cell(sum_row_i, 1, "合计")
-        for i in range(1, ws.max_column+1):
+        for i in range(2, ws.max_column+1):
             col_str = get_column_letter(i)
             range_start = f"{col_str}2"
             range_end = f"{col_str}{sum_row_i - 1}"
@@ -1034,15 +1039,21 @@ class ElemeData:
             col_i = header.index(name) + 1
             for i in range(2, ws.max_row+1):
                 ws.cell(i, col_i, Decimal(ws.cell(i, col_i).value))
+        # 修改格式
+        number_style = NamedStyle(name="number_style", number_format="0.00")
+        for col in range(10, ws.max_column + 1):
+            for row in range(1, ws.max_row+1):
+                ws.cell(row, col).style = number_style
+        ws.freeze_panes = "A2"
         # 最后一行新增合计数
         sum_row_i = ws.max_row + 1
         ws.cell(sum_row_i, 1, "合计")
-        for i in range(1, ws.max_column + 1):
+        for i in range(10, ws.max_column + 1):
             col_str = get_column_letter(i)
             range_start = f"{col_str}2"
             range_end = f"{col_str}{sum_row_i - 1}"
             ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")    
-
+        
 
 class DaDaAutotrophy:
     """达达门店订单明细的处理"""
@@ -1075,7 +1086,7 @@ class DaDaAutotrophy:
 
     def proper_anomaly(self, datas):
         """新建妥投异常分表"""
-        ws = self.wb.create_sheet("妥投异常及取消订单运费")
+        ws: Worksheet = self.wb.create_sheet("妥投异常及取消订单运费")
         for i, row in enumerate(datas, start=1):
             for j, value in enumerate(row, start=1):
                 ws.cell(i, j, value)
@@ -1095,7 +1106,7 @@ class DaDaAutotrophy:
         for i in range(1, len(datas)):
             datas[i][distance_i] = float(datas[i][distance_i])
         # 保存数据
-        ws = self.wb.create_sheet("自营外卖订单（不含自配送）")
+        ws: Worksheet = self.wb.create_sheet("自营外卖订单（不含自配送）")
         for i, row in enumerate(datas, start=1):
             for j, value in enumerate(row, start=1):
                 ws.cell(i, j, value)
@@ -1133,9 +1144,19 @@ class MeiTuanAutotrophy:
 
     def order_detail(self):
         """订单明细分表的处理"""
-        # 获取需要另存为的数据
         ws = self.wb["订单明细"]
-        header = [ws.cell(3, i).value for i in range(1, ws.max_column + 1)]
+        # 处理订单明细分表
+        ws.delete_rows(1, 2)
+        ws.freeze_panes = "A2"
+        for col in ws.columns:
+            col_letter = col[0].column_letter
+            ws.column_dimensions[col_letter].width = 13
+        yellow_fill = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+        for col in list("CEFQ"):
+            cell: Cell = ws[f"{col}1"]
+            cell.fill = yellow_fill
+        # 获取需要另存为的数据
+        header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
         order_source_i = header.index("订单来源")
         order_status_i = header.index("订单状态")
         distribution_mode_i = header.index("配送方式")
@@ -1176,42 +1197,35 @@ class TalkOutData:
 
     def collect_eleme(self):
         """汇总饿了么的数据"""
+        # 为了获取公式计算后的结果
         with xw.App(visible=False) as app:
-            with app.books.open(GOL.save_path.eleme_bill) as wb:
-                ws = wb.sheets["外卖账单明细"]
-                last_cell = ws.used_range.last_cell
+            with app.books.open(GOL.save_path.eleme_bill) as app_wb:
+                app_ws: Sheet = app_wb.sheets["外卖账单明细"]
+                last_cell = app_ws.used_range.last_cell
                 max_row, max_col = last_cell.row, last_cell.column
-                header: List = ws[f"A1:{get_column_letter(max_col)}1"].value
-                # 应收
-                should_income = ws[f"{get_column_letter(header.index('商品金额') + 1)}{max_row}"].value
-                # 抽佣服务费
-                service_cost = ws[f"{get_column_letter(header.index('技术服务费') + 1)}{max_row}"].value
-                # 时段加价
-                time_raise = ws[f"{get_column_letter(header.index('时段收费') + 1)}{max_row}"].value * 0.85
-                # 距离加价
-                distance_raise = ws[f"{get_column_letter(header.index('距离收费') + 1)}{max_row}"].value * 0.85
-                # 价格加价
-                price_raise = ws[f"{get_column_letter(header.index('价格收费') + 1)}{max_row}"].value * 0.85
-                # 商户承担活动补贴
-                activty_subsidy = sum([ws[f"{get_column_letter(header.index(name) + 1)}{max_row}"].value for name in ["商家活动补贴", "商家代金券补贴", "智能满减津贴"]])
-                # 部分退单-申请退单金额
-                chargeback = -ws[f"{get_column_letter(header.index('差额') + 1)}{max_row}"].value + ws[f"{get_column_letter(header.index('打包费') + 1)}{max_row}"].value
-                # 其他(商家自行配送补贴)
-                other = sum([ws[f"{get_column_letter(header.index(name) + 1)}{max_row}"].value for name in ["商家配送费活动补贴", "商家呼单小费"]])
-                # 先享后付服务费
-                eat_now_pay_later = ws[f"{get_column_letter(header.index('先享后付服务费') + 1)}{max_row}"].value
-
-                ws = wb.sheets["账单汇总"]
-                last_cell = ws.used_range.last_cell
+                header: List = app_ws.range((1, 1, 1, max_col)).value
+                should_income = app_ws.range(max_row, header.index("商品金额")).value # 应收
+                service_cost = app_ws.range(max_row, header.index("技术服务费")).value  # 抽佣服务费
+                time_raise = app_ws.range(max_row, header.index("时段收费")).value * 0.85  # 时段加价
+                distance_raise = app_ws.range(max_row, header.index("距离收费")).value * 0.85  # 距离加价
+                price_raise = (app_ws.range(max_row, header.index("配送服务费")).value - time_raise - distance_raise) * 0.85  # 价格加价
+                activty_subsidy = sum([app_ws.range(max_row, header.index(name)).value 
+                                        for name in ["商家活动补贴", "商家代金券补贴", "智能满减津贴"]])  # 商户承担活动补贴
+                chargeback = - app_ws.range(max_row, header.index("差额")).value + app_ws.range(
+                    max_row, header.index("打包费")).value  # 部分退单-申请退单金额
+                other = sum([app_ws.range(max_row, header.index(name)).value for 
+                                name in ["商家配送费活动补贴", "商家呼单小费"]])  # 其他(商家自行配送补贴
+                eat_now_pay_later = app_ws.range(max_row, header.index("先享后付服务费"))  # 先享后付服务费
+                app_ws = app_wb.sheets["账单汇总"]
+                last_cell = app_ws.used_range.last_cell
                 max_row, max_col = last_cell.row, last_cell.column
-                header: List = ws[f"A1:{get_column_letter(max_col)}1"].value
-                # 保险费
-                insurance = 0
+                header: List = app_ws.range((1, 1, 1, max_col)).value
+                insurance = 0  # 保险费
                 if "保险费" in header:
-                    insurance = insurance + ws[f"{get_column_letter(header.index('保险金额') + 1)}{max_row}"].value
+                    insurance = insurance + app_ws.range(max_row, header.index("保险金额")).value
                 if "抖音渠道佣金" in header:
-                    insurance = insurance - ws[f"{get_column_letter(header.index('抖音渠道佣金') + 1)}{max_row}"].value 
-
+                    insurance = insurance - app_ws.range(max_row, header.index("抖音渠道佣金")).value
+        # 写入饿了么数据表
         ws = self.wb[f"{GOL.last_month.year}年饿了么"]
         if GOL.store_name == TM.sweet:
             row_i = [str(ws.cell(i, 1).value) for i in range(17, 23)]
