@@ -44,6 +44,7 @@ class SavePath:
         self.store_consume = None  # 储值消费汇总表
         self.member_addition = None  # 会员新增情况统计表
         self.pay_settlement = None  # 支付结算表
+        self.pay_detail = None  # 支付明细表
 
         self.take_out = None  # 外卖收入汇总表
         self.eleme_bill = None  # 饿了么账单明细
@@ -488,6 +489,7 @@ class MeiTuanCrawler(WebCrawler):
             "储值消费汇总表": GOL.save_path.store_consume,
             "会员新增情况统计表": GOL.save_path.member_addition,
             "支付结算": GOL.save_path.pay_settlement,
+            "支付明细": GOL.save_path.pay_detail,
             "自营外卖_自提订单明细": GOL.save_path.autotrophy_meituan,
         }
 
@@ -543,8 +545,8 @@ class MeiTuanCrawler(WebCrawler):
         if os.path.exists(self._name2save[name]):
             print(f"{name}已存在，不再重新下载")
             return
-        module = self.__enter_main_module("报表中心")
-        self.__enter_rc_module(module, menu_name, name)
+        module = self._enter_main_module("报表中心")
+        self._enter_rc_module(module, menu_name, name)
         WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))
         self._js_click(f"{self._js_span_find('展开筛选')}.click()", self._js_execute_result(self._js_span_find('收起筛选')))
         # 点击日期选择
@@ -560,7 +562,7 @@ class MeiTuanCrawler(WebCrawler):
         signal = f"{self._js_shadow_root()}.querySelector('li[title=\"上一页\"]')"
         self._js_click(action, self._js_execute_result(signal), timeout=5)
         # 清理excel文件
-        self.__clear_excel(name)
+        self._clear_excel(name)
         # 点击下载文件
         action = f"{self._js_span_find('导出')}.click()"
         signal = f"{self._js_span_find('导出')}.parentNode.className.includes('saas-btn-loading')"
@@ -579,13 +581,13 @@ class MeiTuanCrawler(WebCrawler):
         if os.path.exists(self._name2save[download_name]):
             print(f"{download_name}已存在，不再重新下载")
             return
-        module = self.__enter_main_module("报表中心")
-        submodule = self.__enter_rc_module(module, menu_name, name)
-        self.__date_select_3(submodule)
-        self.__search(submodule)
-        self.__clear_excel(download_name)
-        self.__wait_search_finnsh_1(submodule)
-        self.__download_autotrophy_detail(submodule, download_name)
+        module = self._enter_main_module("报表中心")
+        submodule = self._enter_rc_module(module, menu_name, name)
+        self._date_select_3(submodule)
+        self._search(submodule)
+        self._clear_excel(download_name)
+        self._wait_search_finnsh_1(submodule)
+        self._download_autotrophy_detail(submodule, download_name)
 
     def download_synthesize_income(self):
         """下载综合收款统计表"""
@@ -593,14 +595,14 @@ class MeiTuanCrawler(WebCrawler):
         if os.path.exists(self._name2save[name]):
             print(f"{name}已存在，不再重新下载")
             return
-        module = self.__enter_main_module("报表中心")
-        submodule = self.__enter_rc_module(module, menu_name, name)
-        self.__date_select_1(submodule)
-        self.__synthesize_income_condition(submodule)
-        self.__search(submodule)
-        self.__clear_excel(name)
-        self.__wait_search_finnsh_1(submodule)
-        self.__download_direct(submodule, name, name)
+        module = self._enter_main_module("报表中心")
+        submodule = self._enter_rc_module(module, menu_name, name)
+        self._date_select_1(submodule)
+        self._synthesize_income_condition(submodule)
+        self._search(submodule)
+        self._clear_excel(name)
+        self._wait_search_finnsh_1(submodule)
+        self._download_direct(submodule, name, name)
 
     def download_pay_settlement(self):
         """下载支付结算表"""
@@ -608,14 +610,29 @@ class MeiTuanCrawler(WebCrawler):
         if os.path.exists(self._name2save[name]):
             print(f"{name}已存在，不再重新下载")
             return
-        module = self.__enter_main_module("报表中心")
-        submodule = self.__enter_rc_module(module, menu_name, name)
-        self.__date_select_1(submodule)
-        self.__pay_settlement_condition(submodule)
-        self.__search(submodule)
-        self.__clear_excel(name)
-        self.__wait_search_finnsh_1(submodule)
-        self.__download_direct(submodule, name, name)
+        module = self._enter_main_module("报表中心")
+        submodule = self._enter_rc_module(module, menu_name, name)
+        self._date_select_1(submodule)
+        self._pay_settlement_condition(submodule)
+        self._search(submodule)
+        self._clear_excel(name)
+        self._wait_search_finnsh_1(submodule)
+        self._download_direct(submodule, name, name)
+
+    def download_pay_detail(self):
+        """下载支付明细表"""
+        menu_name, name = "收款报表", "支付明细"
+        if os.path.exists(self._name2save[name]):
+            print(f"{name}已存在，不再重新下载")
+            return
+        module = self._enter_main_module("报表中心")
+        submodule = self._enter_rc_module(module, menu_name, name)
+        self._date_select_1(submodule)
+        self._search(submodule)
+        self._clear_excel(name)
+        self._wait_search_finnsh_1(submodule)
+        self._download_direct(submodule, name, name)
+
 
     def download_store_consume(self):
         """下载储值消费汇总表"""
@@ -627,15 +644,15 @@ class MeiTuanCrawler(WebCrawler):
         if os.path.exists(self._name2save[save_name]):
             print(f"{save_name}已存在，不再重新下载")
             return
-        module = self.__enter_main_module("营销中心")
-        submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
-        self.__date_select_4(submodule)
+        module = self._enter_main_module("营销中心")
+        submodule = self._enter_mc_module(module, menu_name, name, iframe_url)
+        self._date_select_4(submodule)
         ele = WebDriverWait(self._driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='custom-dimension-label']//span[text()='日期']")))
         ele.click()
-        self.__search(submodule)
-        self.__wait_search_finnsh_2()
-        self.__clear_excel(name)
-        self.__download_direct(submodule, download_name, save_name)
+        self._search(submodule)
+        self._wait_search_finnsh_2()
+        self._clear_excel(name)
+        self._download_direct(submodule, download_name, save_name)
 
     def download_member_addition(self):
         """下载会员新增情况统计表"""
@@ -647,16 +664,16 @@ class MeiTuanCrawler(WebCrawler):
             print(f"{save_name}已存在，不再重新下载")
             return
         # 进入模块
-        module = self.__enter_main_module("营销中心")
-        submodule = self.__enter_mc_module(module, menu_name, name, iframe_url)
-        self.__toggle_old()
-        self.__date_select_3(submodule)
-        self.__search(submodule)
-        self.__clear_excel(name)
-        self.__wait_search_finnsh_1(submodule)
-        self.__download_direct(submodule, name, save_name)
+        module = self._enter_main_module("营销中心")
+        submodule = self._enter_mc_module(module, menu_name, name, iframe_url)
+        self._toggle_old()
+        self._date_select_3(submodule)
+        self._search(submodule)
+        self._clear_excel(name)
+        self._wait_search_finnsh_1(submodule)
+        self._download_direct(submodule, name, save_name)
 
-    def __enter_main_module(self, name):
+    def _enter_main_module(self, name):
         """进入主模块的方法：运营中心、营销中心、库存管理、报表中心"""
         self._driver.switch_to.default_content()
         # 获取当前容器显示的模块内容
@@ -683,11 +700,11 @@ class MeiTuanCrawler(WebCrawler):
         time.sleep(5)
         return current_module
 
-    def __enter_rc_module(self, module, menu_name, name):
+    def _enter_rc_module(self, module, menu_name, name):
         """进入报表中心的子模块"""
         print(f"进入报表中心-{menu_name}-{name}")
-        submodule = self.__get_statement_submodule(module)
-        if self.__get_active_submodule_name(module) != name:
+        submodule = self._get_statement_submodule(module)
+        if self._get_active_submodule_name(module) != name:
             for _ in range(2):
                 self._hover_and_click(module, menu_name, name)
                 try:
@@ -695,20 +712,20 @@ class MeiTuanCrawler(WebCrawler):
                 except TimeoutException:
                     continue
                 break
-            submodule = self.__get_statement_submodule(module)
+            submodule = self._get_statement_submodule(module)
         return submodule
 
-    def __get_statement_submodule(self, module: WebElement):
+    def _get_statement_submodule(self, module: WebElement):
         """获取报表中心激活的子模块"""
         pattern = (By.XPATH, ".//div[@id='__root_wrapper_rms-report']//div[@style='display: block;']")
         WebDriverWait(module, 60).until(EC.presence_of_all_elements_located(pattern))
         current_submodule = module.find_element(*pattern)
         return current_submodule
 
-    def __enter_mc_module(self, module: WebElement, menu_name, name, url):
+    def _enter_mc_module(self, module: WebElement, menu_name, name, url):
         """进入营销中心的子模块"""
         print(f"进入营销中心-{menu_name}-{name}")
-        if self.__get_active_submodule_name(module) != name:
+        if self._get_active_submodule_name(module) != name:
             self._hover_and_click(module, menu_name, name)
             time.sleep(5)
         pattern = (By.XPATH, f".//iframe[@data-current-url='{url}']")
@@ -718,7 +735,7 @@ class MeiTuanCrawler(WebCrawler):
         time.sleep(2)
         return self._driver
 
-    def __get_active_submodule_name(self, module: WebElement):
+    def _get_active_submodule_name(self, module: WebElement):
         """获取激活的子模块名字"""
         pattern = (By.XPATH, ".//div[@role='tablist']//div[@aria-selected='true']")
         cur_submodule_name = module.find_element(*pattern).text
@@ -778,7 +795,7 @@ class MeiTuanCrawler(WebCrawler):
         """
         return value
 
-    def __date_select_1(self, submodule: WebElement):
+    def _date_select_1(self, submodule: WebElement):
         """日期选择1:综合收款统计的那个类型日期选择控件"""
         pattern = (By.XPATH, ".//input[@placeholder='请选择日期']")
         WebDriverWait(submodule, 60).until(EC.element_to_be_clickable(pattern))
@@ -788,47 +805,21 @@ class MeiTuanCrawler(WebCrawler):
         self._driver.find_element(*pattern).click()
         WebDriverWait(self._driver, 10).until_not(EC.visibility_of_element_located(pattern))
 
-    def __date_select_2(self, submodule: WebElement):
-        """日期选择2:储值消费汇总表（旧版）的那个类型日期选择控件"""
-        ele = WebDriverWait(submodule, 10).until(EC.element_to_be_clickable((By.CLASS_NAME, "el-range-input")))
-        ele.click()
-        pattern = (By.XPATH, ".//div[@class='el-picker-panel el-date-range-picker el-popper']")
-        WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located(pattern))
-        left, right = self._driver.find_element(*pattern).find_elements(By.XPATH, "./*/*/*")
-        now_date = datetime.today()
-        while True:
-            try:
-                right.find_element(By.CLASS_NAME, "today")
-                break
-            except NoSuchElementException:
-                pass
-            right_month_ele = right.find_element(By.XPATH, "./div/div")
-            right_month_str = right_month_ele.text
-            right_month = datetime.strptime(right_month_str, '%Y 年 %m 月')
-            if now_date - right_month <= timedelta(0):
-                left.find_element(By.CLASS_NAME, "el-icon-arrow-left").click()
-            else:
-                right.find_element(By.CLASS_NAME, "el-icon-arrow-right").click()
-            WebDriverWait(right_month_ele, 10).until(lambda ele: ele.text != right_month_str)
-        last_days = left.find_elements(By.XPATH, ".//td[contains(@class, 'available')]")
-        last_days[0].click()
-        last_days[-1].click()
-
-    def __date_select_3(self, submodule: WebElement):
+    def _date_select_3(self, submodule: WebElement):
         """日期选择3:会员新增情况统计表的那个类型日期选择控件"""
         condition = EC.element_to_be_clickable((By.XPATH, ".//input[@placeholder='请选择日期']"))
         select = WebDriverWait(submodule, 10).until(condition)
         select.click()
         WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "ant-calendar")))
-        last_month, calendar_ele = self.__locate_last_month()
+        last_month, calendar_ele = self._locate_last_month()
         self._driver.find_element(By.XPATH, f".//td[@title='{last_month}1日']").click()
         WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(calendar_ele))
-        last_month, calendar_ele = self.__locate_last_month()
+        last_month, calendar_ele = self._locate_last_month()
         pattern = (By.XPATH, ".//td[@class='ant-calendar-cell ant-calendar-last-day-of-month']")
         self._driver.find_element(*pattern).click()
         WebDriverWait(self._driver, 10).until(EC.invisibility_of_element(calendar_ele))
 
-    def __date_select_4(self, submodule: WebElement):
+    def _date_select_4(self, submodule: WebElement):
         """日期选择4:储值消费汇总表（新版）的那个类型日期选择控件"""
         WebDriverWait(submodule, 60).until(EC.visibility_of_element_located((By.XPATH, "//div[text()='序号']")))
         start_ele, end_ele = submodule.find_elements(By.CLASS_NAME, "saas-picker-input")
@@ -861,7 +852,7 @@ class MeiTuanCrawler(WebCrawler):
             submodule.find_element(By.XPATH, f"//td[@title='{select_date_str}']").click()
         submodule.find_element(By.XPATH, "//span[text()='确 定']").click()
 
-    def __locate_last_month(self):
+    def _locate_last_month(self):
         """日期选择3的日历控件定位到上个月"""
         now_date = datetime.today()
         while True:
@@ -882,22 +873,22 @@ class MeiTuanCrawler(WebCrawler):
             WebDriverWait(calendar_month_ele, 60).until(lambda ele: ele.text != calendar_month_str)
         return calendar_month_ele.text, calendar_month_ele
 
-    def __search(self, submodule: WebElement):
+    def _search(self, submodule: WebElement):
         ele = WebDriverWait(submodule, 60).until(EC.element_to_be_clickable((By.XPATH, ".//button[contains(., '查询')]")))
         ele.click()
         time.sleep(5)
 
-    def __wait_search_finnsh_1(self, submodule: WebElement):
+    def _wait_search_finnsh_1(self, submodule: WebElement):
         """等待查询内容显示1:类似综合收款统计的表格类型"""
         pattern = (By.XPATH, ".//div[@class='ant-spin-nested-loading']//div[@class='ant-spin-container']")
         WebDriverWait(submodule, 60).until(EC.presence_of_element_located(pattern))
 
-    def __wait_search_finnsh_2(self):
+    def _wait_search_finnsh_2(self):
         """等待查询内容显示2:类似储值消费汇总表的表格类型"""
         condition = EC.presence_of_element_located((By.CLASS_NAME, 'el-loading-parent--relative'))
         WebDriverWait(self._driver, 60).until_not(condition)
 
-    def __clear_excel(self, name):
+    def _clear_excel(self, name):
         """清理已存在的文件"""
         file_names = os.listdir(self._download_path)
         for file_name in file_names:
@@ -907,12 +898,12 @@ class MeiTuanCrawler(WebCrawler):
             os.remove(path)
             print(f"清理文件:{path}")
 
-    def __download_direct(self, submodule: WebElement, download_name, save_name):
+    def _download_direct(self, submodule: WebElement, download_name, save_name):
         """直接导出文件"""
         submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
         self.wait_download(f"*{download_name}*", save_name)
 
-    def __download_autotrophy_detail(self, submodule: WebElement, name):
+    def _download_autotrophy_detail(self, submodule: WebElement, name):
         """导出文件"""
         submodule.find_element(By.XPATH, ".//span[text()='导出']/parent::button").click()
         condition = EC.visibility_of_element_located((By.XPATH, "//div[@id='rcDialogTitle0']/../.."))
@@ -925,7 +916,7 @@ class MeiTuanCrawler(WebCrawler):
         dialog.find_element(By.XPATH, ".//span[text()='确 定']/parent::button").click()
         self.wait_download(f"*{name}*", name)
 
-    def __synthesize_income_condition(self, submodule: WebElement):
+    def _synthesize_income_condition(self, submodule: WebElement):
         """综合收款统计的查询条件"""
         element = submodule.find_element(By.XPATH, ".//span[text()='按 日']/..")
         if "isSelected" in element.get_attribute("class"):
@@ -938,7 +929,7 @@ class MeiTuanCrawler(WebCrawler):
         else:
             element.click()
 
-    def __pay_settlement_condition(self, submodule: WebElement):
+    def _pay_settlement_condition(self, submodule: WebElement):
         """支付结算表的查询条件"""
         element = submodule.find_element(By.XPATH, ".//span[text()='交易日期']/..")
         if "isSelected" in element.get_attribute("class"):
@@ -946,7 +937,7 @@ class MeiTuanCrawler(WebCrawler):
         else:
             element.click()
 
-    def __toggle_old(self):
+    def _toggle_old(self):
         """切换到旧版本:会员新增情况统计表的功能"""
         # 收缩导航
         self._driver.switch_to.default_content()
@@ -1464,6 +1455,8 @@ def crawler_main(chrome_path, driver_path, download_path, user_path):
     meituan.download_synthesize_income()
     print("下载支付结算表的相关数据")
     meituan.download_pay_settlement()
+    print("下载支付明细表的相关数据")
+    meituan.download_pay_detail()
     print("下载储值消费汇总表的数据")
     meituan.download_store_consume()
     print("下载会员新增情况统计表的相关数据")
@@ -1577,6 +1570,7 @@ def main():
         GOL.save_path.store_consume = os.path.join(save_folder, f"{GOL.store_name}储值消费汇总表{date_str}.xlsx")
         GOL.save_path.member_addition = os.path.join(save_folder, f"{GOL.store_name}会员新增情况统计表{date_str}.xlsx")
         GOL.save_path.pay_settlement = os.path.join(save_folder, f"{GOL.store_name}支付结算{date_str}.xlsx")
+        GOL.save_path.pay_detail = os.path.join(save_folder, f"{GOL.store_name}支付明细{date_str}.xlsx")
         GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(美团后台).xlsx")
         GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(达达).xlsx")
         if os.path.exists(GOL.save_path.operate_detail):
