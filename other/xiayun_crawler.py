@@ -22,7 +22,7 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, JavascriptException
 from typing import Dict, List
 from datetime import timedelta, date, datetime
 from openpyxl.worksheet.worksheet import Worksheet
@@ -168,14 +168,13 @@ class GetOperateDetail:
     def read_general_business(self):
         """读取综合营业统计表的相关数据"""
         data = pd.read_excel(GOL.save_path.synthesize_operate, header=None)
-        row2 = data.iloc[2]
-        row3 = data.iloc[3]
-        row4 = data.iloc[4]
+        row2 = data.iloc[2].apply(replace_parentheses)
+        row3 = data.iloc[3].apply(replace_parentheses)
+        row4 = data.iloc[4].apply(replace_parentheses)
         ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）", is_must=False)
         dianping_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信", is_must=False)
         cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币", is_must=False)
-        eat_in_i_list = get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)
-        eat_in_i_list = list(range(eat_in_i_list[0], eat_in_i_list[1]))
+        eat_in_i_list = list(range(*get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)))
         pubilc_relation_income_i = get_3row_index(
             row2, row3, row4, "营业收入构成", "自定义记账", "公关/奖品/活动/无实质性收入（自）", is_must=False)
         wechat_i = get_3row_index(row2, row3, row4, "营业收入构成", "自定义记账", [
@@ -183,59 +182,57 @@ class GetOperateDetail:
         ele_me_free_i = get_3row_index(row2, row3, row4, "支付优惠构成", "外卖", "饿了么外卖")  # 56
         other_free_i = get_3row_index(row2, row3, row4, "折扣优惠构成", "小计", "小计")  # 68
         for row in data.iloc[5:].itertuples():
-            day_str = row[1]
+            row = row[1:]
+            day_str = row[0]
             if day_str == "合计":
                 break
             day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.save_data[day_str]
-            day_data.cash = row[cach_i + 1] if cach_i is not None else 0
-            day_data.wechat = row[wechat_i + 1]
+            day_data.cash = row[cach_i] if cach_i is not None else 0
+            day_data.wechat = row[wechat_i]
             day_data.eat_in = sum(list_generate(eat_in_i_list, row))
-            day_data.ele_me = row[ele_me_i + 1] if ele_me_i is not None else 0 
-            day_data.dianping = row[dianping_i + 1] if dianping_i is not None else 0 
-            day_data.ele_me_free = row[ele_me_free_i + 1]
-            day_data.other_free = row[other_free_i + 1]
-            day_data.pubilc_relation_income = row[pubilc_relation_income_i + 1] if pubilc_relation_income_i is not None else 0
+            day_data.ele_me = row[ele_me_i] if ele_me_i is not None else 0 
+            day_data.dianping = row[dianping_i] if dianping_i is not None else 0 
+            day_data.ele_me_free = row[ele_me_free_i]
+            day_data.other_free = row[other_free_i]
+            day_data.pubilc_relation_income = row[pubilc_relation_income_i] if pubilc_relation_income_i is not None else 0
 
     def read_general_collection(self):
         """读取综合收款统计表的相关数据"""
         data = pd.read_excel(GOL.save_path.synthesize_income, header=None)
-        row2 = data.iloc[2]
-        row3 = data.iloc[3]
+        row2 = data.iloc[2].apply(replace_parentheses)
+        row3 = data.iloc[3].apply(replace_parentheses)
         cash_i = get_2row_index(row2, row3, "现金", "人民币")
-        scan_i_list = get_2row_index(row2, row3, "扫码支付", None)
-        scan_i_list = list(range(scan_i_list[0], scan_i_list[1]))
+        scan_i_list = list(range(*get_2row_index(row2, row3, "扫码支付", None)))
         income_i = get_2row_index(row2, row3, "自定义记账", "公关/奖品/活动/无实质性收入（自）", is_must=False)
         wechat_i = get_2row_index(row2, row3, "自定义记账", ["微信收款（店长号收款）（自）", "微信店长号收款（自）", "店长微信收款收入（自）"])
         if wechat_i is None:
             raise Exception("找不到数据:微信收款（店长号收款）（自）, 微信店长号收款（自）, 店长微信收款收入（自）")
         for row in data.iloc[5:].itertuples():
-            day_str = row[1]
+            row = row[1:]
+            day_str = row[0]
             if day_str == "合计":
                 break
             day_str: str = day_str[2:]
             day_str = day_str.replace("/", ".")
             day_data = self.save_data[day_str]
-            if row[2] != "会员充值":
+            if row[1] != "会员充值":
                 continue
-            if row[3] in ["充值", "撤销充值"]:
-                cash = row[cash_i + 1]
-                wechat = row[wechat_i + 1]
+            if row[2] in ["充值", "撤销充值"]:
+                cash = row[cash_i]
+                wechat = row[wechat_i]
                 scan = sum(list_generate(scan_i_list, row))
-                income = 0 if income_i is None else row[income_i + 1]
-            elif row[3] == "退卡":
-                cash = -row[cash_i + 1]
+                income = 0 if income_i is None else row[income_i]
+            elif row[2] == "退卡":
+                cash = row[cash_i]
+                wechat = row[wechat_i]
+                income = row[income_i] if income_i is not None else 0
+                scan = sum(list_generate(scan_i_list, row))
                 assert cash <= 0, "退卡金额应该小于0"
-                wechat = -row[wechat_i + 1]
                 assert wechat <= 0, "退卡金额应该小于0"
-                scan = 0
-                for i in scan_i_list:
-                    i = i + 1
-                    assert row[i] >= 0, "退卡金额应该小于0"
-                    scan -= row[i]
-                income = 0 if income_i is None else -row[income_i + 1]
                 assert income <= 0, "退卡金额应该小于0"
+                assert scan <= 0, "退卡金额应该小于0"
             else:
                 continue
             day_data.member_cash.append(cash)
@@ -256,14 +253,15 @@ class GetOperateDetail:
     def read_store_consume(self):
         """读取储值消费汇总表的相关数据"""
         data = pd.read_excel(GOL.save_path.store_consume, header=None)
-        row2 = data.iloc[2]
-        row3 = data.iloc[3]
-        main_consume_i = get_2row_index(row2, row3, "净储值消费金额", "本金(元)")
-        gift_consume_i = get_2row_index(row2, row3, "净储值消费金额", "赠金(元)")
-        main_paid_i = get_2row_index(row2, row3, "净储值金额", "本金(元)")
-        gift_paid_i = get_2row_index(row2, row3, "净储值金额", "赠金(元)")
+        row2 = data.iloc[2].apply(replace_parentheses)
+        row3 = data.iloc[3].apply(replace_parentheses)
+        main_consume_i = get_2row_index(row2, row3, "净储值消费金额", "本金（元）")
+        gift_consume_i = get_2row_index(row2, row3, "净储值消费金额", "赠金（元）")
+        main_paid_i = get_2row_index(row2, row3, "净储值金额", "本金（元）")
+        gift_paid_i = get_2row_index(row2, row3, "净储值金额", "赠金（元）")
         for row in data.iloc[4:].itertuples():
-            day_str = row[1]
+            row = row[1:]  # 去除索引
+            day_str = row[0]
             if day_str == "合计":
                 break
             day_str: str = day_str[2:]
@@ -281,28 +279,31 @@ class GetOperateDetail:
         assert data.iloc[2, 0] == "日期", "表格发生变化，请联系管理员"
         assert data.iloc[2, 1] == "合计", "表格发生变化，请联系管理员"
         for row in data.iloc[3:].itertuples():
-            if row[1] == "合计":
+            row = row[1:]
+            if row[0] == "合计":
                 break
-            day_str: str = row[1][2:]
+            day_str: str = row[0][2:]
             day_str = day_str.replace("-", ".")
             day_data = self.save_data[day_str]
-            day_data.new_member = row[2]
+            day_data.new_member = row[1]
 
     def read_pay_settlement(self):
         """读取支付结算表的相关数据"""
         data = pd.read_excel(GOL.save_path.pay_settlement, header=None)
-        assert data.iloc[2, 2] == "结算日期", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 3] == "交易金额(元)", "表格发生变化，请联系管理员"
-        assert data.iloc[2, 5] == "手续费(元)", "表格发生变化，请联系管理员"
+        row2 = data.iloc[2].apply(replace_parentheses)
+        assert row2[2] == "结算日期", "表格发生变化，请联系管理员"
+        assert row2[3] == "交易金额（元）", "表格发生变化，请联系管理员"
+        assert row2[5] == "手续费（元）", "表格发生变化，请联系管理员"
         for row in data.iloc[3:len(GOL.days) + 3].itertuples():
-            day_str = row[3]
+            row = row[1:]
+            day_str = row[2]
             if pd.isna(day_str):
                 break
             day_str: str = day_str[2:]
             day_str = day_str.replace("-", ".")
             day_data = self.save_data[day_str]
-            day_data.hand_charge = row[6]
-            day_data.settlement_amount = row[4]
+            day_data.hand_charge = row[5]
+            day_data.settlement_amount = row[3]
 
 
 class WebCrawler(ABC):
@@ -543,12 +544,33 @@ class MeiTuanCrawler(WebCrawler):
             print(f"{name}已存在，不再重新下载")
             return
         module = self.__enter_main_module("报表中心")
-        submodule = self.__enter_rc_module(module, menu_name, name)
-        self.__date_select_1(submodule)
-        self.__search(submodule)
+        self.__enter_rc_module(module, menu_name, name)
+        WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))
+        self._js_click(f"{self._js_span_find('展开筛选')}.click()", self._js_execute_result(self._js_span_find('收起筛选')))
+        # 点击日期选择
+        action = f"{self._js_shadow_root()}.querySelector('input[placeholder=\"开始日期\"]').parentElement.click()"
+        signal = f"!{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
+        self._js_click(action, self._js_execute_result(signal))
+        # 选择上个月
+        action = f"{self._js_span_find('上月')}.click()"
+        signal = f"{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
+        self._js_click(action, self._js_execute_result(signal))
+        # 点击查询
+        action = f"{self._js_span_find('查询')}.click()"
+        signal = f"{self._js_shadow_root()}.querySelector('li[title=\"上一页\"]')"
+        self._js_click(action, self._js_execute_result(signal), timeout=5)
+        # 清理excel文件
         self.__clear_excel(name)
-        self.__wait_search_finnsh_1(submodule)
-        self.__download_direct(submodule, name, name)
+        # 点击下载文件
+        action = f"{self._js_span_find('导出')}.click()"
+        signal = f"{self._js_span_find('导出')}.parentNode.className.includes('saas-btn-loading')"
+        self._js_click(action, self._js_execute_result(signal))
+        # 等待文件下载完成
+        self.wait_download(f"*{name}*", name)
+        # 点击提醒
+        action = f"{self._js_span_find('我知道了')}.click()"
+        signal = f"!{self._js_shadow_root()}.querySelector('div[role=\"dialog\"]')"
+        self._js_click(action, self._js_execute_result(signal))
 
     def download_autotrophy(self):
         """下载自营外卖/自提订单明细表"""
@@ -666,8 +688,13 @@ class MeiTuanCrawler(WebCrawler):
         print(f"进入报表中心-{menu_name}-{name}")
         submodule = self.__get_statement_submodule(module)
         if self.__get_active_submodule_name(module) != name:
-            self.__hover_and_click(module, menu_name, name)
-            WebDriverWait(submodule, 10).until(lambda ele: ele.get_attribute("style") == "display: none;")
+            for _ in range(2):
+                self._hover_and_click(module, menu_name, name)
+                try:
+                    WebDriverWait(submodule, 5).until(lambda ele: ele.get_attribute("style") == "display: none;")
+                except TimeoutException:
+                    continue
+                break
             submodule = self.__get_statement_submodule(module)
         return submodule
 
@@ -682,7 +709,7 @@ class MeiTuanCrawler(WebCrawler):
         """进入营销中心的子模块"""
         print(f"进入营销中心-{menu_name}-{name}")
         if self.__get_active_submodule_name(module) != name:
-            self.__hover_and_click(module, menu_name, name)
+            self._hover_and_click(module, menu_name, name)
             time.sleep(5)
         pattern = (By.XPATH, f".//iframe[@data-current-url='{url}']")
         WebDriverWait(module, 120).until(EC.visibility_of_element_located(pattern))
@@ -697,7 +724,7 @@ class MeiTuanCrawler(WebCrawler):
         cur_submodule_name = module.find_element(*pattern).text
         return cur_submodule_name
 
-    def __hover_and_click(self, module: WebElement, menu_name, name):
+    def _hover_and_click(self, module: WebElement, menu_name, name):
         """悬停菜单栏并点击子模块"""
         pattern = (By.XPATH, f".//div[@class='menu-container ']//span[text()='{menu_name}']/../..")
         WebDriverWait(module, 10).until(EC.visibility_of_element_located(pattern))
@@ -712,6 +739,44 @@ class MeiTuanCrawler(WebCrawler):
             except TimeoutException:
                 continue
             break
+
+    def _js_span_find(self, value):
+        """"通过JS命令查找span元素"""
+        return f"Array.from({self._js_shadow_root()}.querySelectorAll('span')).find(span => span.textContent.trim() === '{value}')"
+    
+    def _js_shadow_root(self):
+        """查找shadowRoot"""
+        return "document.querySelector('render-box-root-x').shadowRoot"
+
+    def _js_click(self, action, signal, timeout=3):
+        """通过JS命令点击元素"""
+        for i in range(10):
+            print(f"开始第{i+1}次点击操作:{action}")
+            time.sleep(1)
+            try:
+                self._driver.execute_script(action)
+            except JavascriptException:
+                if i < 9:
+                    continue
+                else:
+                    print(f"需要点击的元素并不存在:{action}")
+                    return 
+            st = time.time()
+            while time.time() - st < timeout:
+                try:
+                    self._driver.execute_script(signal)
+                except JavascriptException:
+                    continue
+                return True
+        raise Exception(f"多次尝试点击操作失败:{action}")
+
+    def _js_execute_result(self, value):
+        """封装JS命令,执行失败报错"""
+        value = f"""
+            const resultVariable = {value};
+            if (!resultVariable) {{ throw new Error('execute failed!!!');}}
+        """
+        return value
 
     def __date_select_1(self, submodule: WebElement):
         """日期选择1:综合收款统计的那个类型日期选择控件"""
@@ -1215,7 +1280,7 @@ class TalkOutData:
                     max_row, header.index("打包费")).value  # 部分退单-申请退单金额
                 other = sum([app_ws.range(max_row, header.index(name)).value for 
                                 name in ["商家配送费活动补贴", "商家呼单小费"]])  # 其他(商家自行配送补贴
-                eat_now_pay_later = app_ws.range(max_row, header.index("先享后付服务费"))  # 先享后付服务费
+                eat_now_pay_later = app_ws.range(max_row, header.index("先享后付服务费")).value  # 先享后付服务费
                 app_ws = app_wb.sheets["账单汇总"]
                 last_cell = app_ws.used_range.last_cell
                 max_row, max_col = last_cell.row, last_cell.column
@@ -1327,7 +1392,7 @@ def get_2row_index(row1: pd.Series, row2: pd.Series, name1, name2, is_must=True)
     return get_value_index(row2_indexs, row2_values, name2, is_must)
 
 
-def get_value_index(indexs, names, search_names, is_must):
+def get_value_index(indexs, names:list, search_names, is_must):
     """获取多个标题中某个数据的索引"""
     if isinstance(search_names, str):
         if search_names in names:
@@ -1343,6 +1408,11 @@ def get_value_index(indexs, names, search_names, is_must):
             raise ValueError(f"{names}中没有找到{search_names}的数据")
         return None
 
+def replace_parentheses(text):
+    """将半角括号替换成全角括号"""
+    if isinstance(text, str):
+        text = text.replace('(', '（').replace(')', '）')
+    return text
 
 def init_chrome(path, driver_path, download_path, user_path):
     service = Service(driver_path)
@@ -1361,7 +1431,20 @@ def init_chrome(path, driver_path, download_path, user_path):
 def list_generate(indexs, values):
     """list的列表生成器"""
     for i in indexs:
-        yield values[i + 1]
+        yield values[i]
+
+def copy_folder(src_folder, dst_folder):
+    if os.path.exists(dst_folder):
+        for root, dirs, files in os.walk(dst_folder, topdown=False):
+            for file in files:
+                file_path = os.path.join(root, file)
+                os.remove(file_path)
+            for dir in dirs:
+                dir_path = os.path.join(root, dir)
+                os.rmdir(dir_path)
+    else:
+        os.makedirs(dst_folder)
+    shutil.copytree(src_folder, dst_folder, dirs_exist_ok=True)
 
 
 def crawler_main(chrome_path, driver_path, download_path, user_path):
@@ -1474,6 +1557,9 @@ def main():
     download_path = r"D:\Download"
     # 定义保存名称
     save_folder = os.path.join(os.path.dirname(operate_detail_template), "输入数据")
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    backup_folder = os.path.join(os.path.dirname(operate_detail_template), "数据备份")
     date_str = GOL.last_month.strftime("%Y%m")
     # 输入文件地址, Bread（湖明店）,Bread（瑞景店）,Sweet
     input_value_name = "&&".join(os.listdir(save_folder))
@@ -1498,6 +1584,8 @@ def main():
             continue
         # 从网站上下载相关EXCEL文件
         crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
+        # 备份所有数据，作为回退处理，减少二次从网站上下载数据的情况发生
+        copy_folder(save_folder, backup_folder)
         # 汇总营业明细表
         operation_detail_main(operate_detail_template)
         # 饿了么导出数据的处理-账单明细表
