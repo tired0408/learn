@@ -1201,9 +1201,13 @@ class MeiTuanAutotrophy:
     def order_detail(self):
         """订单明细分表的处理"""
         ws = self.wb["订单明细"]
-        # 处理订单明细分表
+        # 整理格式
+        merge_range_cells = list(ws.merged_cells.ranges)
+        for merge_range in merge_range_cells:
+            ws.unmerge_cells(str(merge_range))
         ws.delete_rows(1, 2)
         ws.freeze_panes = "A2"
+        # 处理订单明细分表
         for col in ws.columns:
             col_letter = col[0].column_letter
             ws.column_dimensions[col_letter].width = 13
