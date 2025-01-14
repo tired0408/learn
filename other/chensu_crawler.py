@@ -348,7 +348,7 @@ class LYWebCustom(LYWeb, WebAbstract):
             id = get_id(client_name, product_name)
             rd[id].today_sale += sales
 
-        start_date = now_date.replace(day=1).replace(month=1).strftime("%Y-%m-%d")
+        start_date = (now_date - relativedelta(days=90)).strftime("%Y-%m-%d")
         datas = super().purchase_sale_stock(start_date)
         for product_name, _, sales, _ in datas:
             id = get_id(client_name, product_name)
