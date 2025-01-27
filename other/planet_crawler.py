@@ -9,7 +9,7 @@ import traceback
 import datetime
 import collections
 from tqdm import tqdm
-from typing import List
+from typing import List, TextIO, Optional
 from bs4 import BeautifulSoup
 from datetime import timedelta
 from concurrent.futures import Future
@@ -26,49 +26,32 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.remote.webelement import WebElement
 from crawler_util import init_chrome
 
+def init_folder(folder, name):
+    """初始化文件夹"""
+    path = os.path.join(folder, name)
+    if not os.path.exists(path):
+        os.mkdir(path)
+        return path, 0
+    file_num = len(os.listdir(path))
+    return path, file_num
 
 class Store:
 
-    def __init__(self, dir_path, name, is_picture, is_annex, is_comment):
-        self.txt_path = os.path.join(dir_path, f"{name}.txt")
-        self.img_path, self.img_index = self.init_folder(dir_path, f"{name}的图片") if is_picture else (None, 0)
+    def __init__(self, dir_path, name, is_picture, is_annex):
+        self.dir_path = dir_path
+        self.txt_path = None
+        self.f: Optional[TextIO] = None
+        self.img_path, self.img_index = init_folder(dir_path, f"{name}的图片") if is_picture else (None, 0)
         self.pool = ThreadPoolExecutor(max_workers=10)
         self.tasks: List[Future] = []
-        self.annex_path, _ = self.init_folder(dir_path, f"{name}的附件") if is_annex else (None, 0)
+        self.annex_path, _ = init_folder(dir_path, f"{name}的附件") if is_annex else (None, 0)
         self.annex_download_list = collections.deque()
         self.chrome_download = r"D:\Download"
-        self.comment_path, self.comment_index = self.init_folder(dir_path, f"{name}的评论") if is_comment else (None, 0)
-        self.f = open(self.txt_path, 'a', encoding='utf-8')
 
     def __del__(self):
+        if self.f is None:
+            return
         self.f.close()
-
-    def init_folder(self, folder, name):
-        """初始化文件夹"""
-        path = os.path.join(folder, name)
-        if not os.path.exists(path):
-            os.mkdir(path)
-            return path, 0
-        file_num = len(os.listdir(path))
-        return path, file_num
-
-    def write_comment(self, values):
-        """写入并生成评论文件夹"""
-        self.comment_index += 1
-        name = f"{self.comment_index}.txt"
-        # 异步保存评论
-        task = self.pool.submit(self.save_txt_method, name, values)
-        self.tasks.append(task)
-        return name
-
-    def save_txt_method(self, name, values):
-        """保存TXT的方法"""
-        txt_path = os.path.join(self.comment_path, name)
-        with open(txt_path, "w", encoding="utf-8") as f:
-            for comment_container in values:
-                for comment in comment_container:
-                    f.write(f"{comment}\n")
-                f.write(f"{'-' * 100}\n")
 
     def download_img(self, src):
         """异步下载图片"""
@@ -151,23 +134,40 @@ class Store:
                 break
 
     def write_info(self, name, date, ctype, content, images, annexs, comment):
-        """写入文字信息"""
+        """写入文字信息
+        Args:
+            name: (str); 人物名称
+            date: (str); 日期,"%Y-%m-%d %H:%M"
+            ctype: (str); 类型
+            content: (str); 内容
+            images: (list); 图片文件名列表
+            annexs: (list); 附件文件名列表
+            comment: (list); 评论内容列表
+        """
+        day = datetime.datetime.strptime(date, "%Y-%m-%d %H:%M").strftime("%Y-%m-%d")
+        txt_path = os.path.join(self.dir_path, f"{day}.txt")
+        if txt_path != self.txt_path:
+            if self.f is not None:
+                self.f.close()
+            self.txt_path = txt_path
+            self.f = open(txt_path, "w", encoding="utf-8")
         self.f.writelines([
             f"**人物:{name}\n",
             f"**时间:{date}\n",
             f"**类型:{ctype}\n",
             "**内容:\n",
-            f"{content}\n"
+            f"{content}\n",
         ])
-        if comment is not None:
-            value = f"**评论:{comment}\n"
-            self.f.write(value)
         if len(images) != 0:
             images = ','.join(images)
             self.f.write(f"**图片:{images}\n")
         if len(annexs) != 0:
-            annexs = '\n'.join(annexs)
+            annexs = ','.join(annexs)
             self.f.write(f"**附件:\n{annexs}\n")
+        if len(comment) !=0:
+            self.f.write(f"**评论:\n")
+            for value in comment:
+                self.f.write(f"{value}\n")
         self.f.write(f"{'-' * 100}\n")
 
 
@@ -194,9 +194,11 @@ class Crawler:
         self.driver = init_chrome(chromedriver_path, download_path, user_path=user_path, chrome_path=chrome_path, is_proxy=False)  # 定义chrome浏览器驱动
         self.wait = WebDriverWait(self.driver, 120)  # 定义等待器
         self.actions = ActionChains(self.driver)
-        self.owner = Store(dir_path, name, is_img, annex_name is not None, comment_name is not None)
-        self.member = Store(dir_path, f"{name}_成员", is_img, annex_name is not None,
-                            comment_name is not None) if not is_owner else None
+        data_folder = os.path.join(dir_path, name)
+        if not os.path.exists(data_folder):
+            os.mkdir(data_folder)
+        self.owner = Store(data_folder, name, is_img, annex_name is not None)
+        self.member = Store(data_folder, f"{name}_成员", is_img, annex_name is not None) if not is_owner else None
 
     def __del__(self):
         """关闭谷歌浏览器"""
@@ -326,7 +328,7 @@ class Crawler:
             content = content_container.find_element(By.TAG_NAME, "div")
             content_type = content.get_attribute("class")
             content_text = text_method(content)
-            comments = self.analysis_and_write_comment(topic_element, store)
+            comments = self.analysis_comment(topic_element)
             images = self.analysis_and_download_imgs(content.find_elements(By.TAG_NAME, "img"), store)
             annexs = self.analysis_and_download_annex(topic_element, store)
             store.write_info(role_name, date, content_type, content_text, images, annexs, comments)
@@ -355,20 +357,20 @@ class Crawler:
         soup = BeautifulSoup(element_html, 'lxml')
         return soup.text
 
-    def analysis_and_write_comment(self, topic_element: WebElement, store: Store):
+    def analysis_comment(self, topic_element: WebElement):
         """分析评论"""
         if self.comment_name is None:
-            return None
-        values = topic_element.find_elements(By.XPATH, ".//div[@class='comment-box']/app-comment-item")
+            return []
+        values = topic_element.find_elements(By.XPATH, ".//div[contains(@class, 'comment-box')]/app-comment-item")
         if len(values) == 0:
-            return None
+            return []
         # TODO 待校验，判断是否有所需评论，没有的话，不点开详情
         if len(topic_element.find_elements(By.XPATH, ".//span[text()='更多评论']")) == 0:
             for comment_item in values:
                 if self.judge_comment_need(comment_item):
                     break
             else:
-                return None
+                return []
         # 抓取所需评论
         detail_button = topic_element.find_element(By.XPATH, ".//div[text()='查看详情']")
         self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", detail_button)
@@ -396,17 +398,13 @@ class Crawler:
                     break
             else:
                 continue
-            each_rd = []
             for comment_item in comment_item_list:
                 date = comment_item.find_element(By.CLASS_NAME, "time").text
                 content = comment_item.find_element(By.CLASS_NAME, "text").text
-                each_rd.append(f"({date}){content}")
-            rd.append(each_rd)
+                rd.append(f"({date}){content}")
         self.driver.execute_script("document.elementFromPoint(0, 0).click();")
         WebDriverWait(self.driver, 10).until_not(EC.visibility_of_element_located((By.TAG_NAME, "app-topic-detail")))
-        if len(rd) == 0:
-            return None
-        return store.write_comment(rd)
+        return rd
 
     def judge_comment_need(self, comment_item: WebElement):
         """判断评论是否有需要的内容"""
@@ -468,13 +466,13 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    # opt["owner"] = True
-    # opt["img"] = True
+    opt["owner"] = True
+    opt["img"] = True
     opt["annex"] = "all"
-    # opt["comment"] = "年大"
-    # opt["date"] = "2022.11.30_11.57"
-    opt["url"] = r"https://wx.zsxq.com/group/88888558554112"
-    opt["name"] = "xinxipingquan"
+    opt["comment"] = "司令"
+    opt["date"] = "2024.04.01_00.00"
+    opt["url"] = r"https://wx.zsxq.com/group/828288122112"
+    opt["name"] = "juewushe"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None
