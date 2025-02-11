@@ -1287,12 +1287,8 @@ class TalkOutData:
                     insurance = insurance - app_ws.range(max_row, header.index("抖音渠道佣金")).value
         # 写入饿了么数据表
         ws = self.wb[f"{GOL.last_month.year}年饿了么"]
-        if GOL.store_name == TM.sweet:
-            row_i = [str(ws.cell(i, 1).value) for i in range(17, 23)]
-            row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 17
-        else:
-            row_i = [str(ws.cell(i, 1).value) for i in range(4, 16)]
-            row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 4
+        row_i = [str(ws.cell(i, 1).value) for i in range(4, 16)]
+        row_i = row_i.index(GOL.last_month.strftime("%y.%m")) + 4
         ws.cell(row_i, 2, should_income)  
         ws.cell(row_i, 3, service_cost)  
         ws.cell(row_i, 4, time_raise)  
@@ -1429,6 +1425,7 @@ def list_generate(indexs, values):
         yield values[i]
 
 def copy_folder(src_folder, dst_folder):
+    print("备份网站数据到备份文件夹")
     if os.path.exists(dst_folder):
         for root, dirs, files in os.walk(dst_folder, topdown=False):
             for file in files:
@@ -1565,7 +1562,7 @@ def main():
             continue
         print(f"开始处理{deal_name}")
         GOL.store_name = deal_name
-        GOL.save_path.take_out = os.path.join(save_folder, f"{GOL.store_name}外卖收入汇总表{date_str[:4]}.xlsx")
+        GOL.save_path.take_out = os.path.join(save_folder, f"{GOL.store_name}外卖收入汇总表{date_str}.xlsx")
         GOL.save_path.eleme_bill = os.path.join(save_folder, f"{GOL.store_name}账单明细{date_str}.xlsx")
         # 其他文件地址
         GOL.save_path.operate_detail = os.path.join(save_folder, f"{GOL.store_name}营业明细表{date_str}.xlsx",)
