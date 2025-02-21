@@ -465,13 +465,13 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    opt["owner"] = True
-    opt["img"] = True
+    # opt["owner"] = True
+    # opt["img"] = True
     # opt["annex"] = "all"
     # opt["comment"] = "司令"
-    opt["date"] = "2024.01.01_00.00"
-    opt["url"] = r"https://wx.zsxq.com/group/15552545584422"
-    opt["name"] = "yanjiuyuan"
+    # opt["date"] = "2024.01.01_00.00"
+    # opt["url"] = r"https://wx.zsxq.com/group/15552545584422"
+    # opt["name"] = "yanjiuyuan"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None
