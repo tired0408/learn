@@ -429,30 +429,29 @@ class Crawler:
         """分析并下载附件"""
         if self.annex_name is None:
             return []
-        try:
-            values = container.find_element(By.TAG_NAME, "app-file-gallery").find_elements(By.CLASS_NAME, "item")
-            if len(values) == 0:
-                return []
-            names = []
-            for element in values:
-                name = element.find_element(By.CLASS_NAME, "file-name").text
-                file_type = name.split(".")[-1]
-                if self.annex_name != "all" and file_type not in self.annex_name:
-                    continue
-                names.append(name)
-                if store.annex_exists(name):
-                    continue
-                self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                element.click()
-                WebDriverWait(container, 10).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
+        values = container.find_elements(By.XPATH, ".//app-file-gallery//div[contains(@class, 'item')]")
+        if len(values) == 0:
+            return []
+        names = []
+        for element in values:
+            name = element.find_element(By.CLASS_NAME, "file-name").text
+            file_type = name.split(".")[-1]
+            if self.annex_name != "all" and file_type not in self.annex_name:
+                continue
+            names.append(name)
+            if store.annex_exists(name):
+                continue
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
+            ele = WebDriverWait(element, 20).until(EC.element_to_be_clickable(element))
+            ele.click()
+            tips = container.find_elements(By.XPATH, ".//div[contains(text(), '内容保护')]")
+            if len(tips) == 0:
+                WebDriverWait(container, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
                 container.find_element(By.CLASS_NAME, "download").click()
                 store.wait_start_annex_download(name)
-                self.driver.execute_script("document.elementFromPoint(0, 0).click();")
-                WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
-            return names
-        except NoSuchElementException:
-            return []
-
+            self.driver.execute_script("document.elementFromPoint(0, 0).click();")
+            WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "file-preview-container")))
+        return names
 
 if __name__ == "__main__":
     import argparse
@@ -466,13 +465,13 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    # opt["owner"] = True
-    # opt["img"] = True
+    opt["owner"] = True
+    opt["img"] = True
     # opt["annex"] = "all"
     # opt["comment"] = "司令"
-    # opt["date"] = "2024.04.01_00.00"
-    # opt["url"] = r"https://wx.zsxq.com/group/828288122112"
-    # opt["name"] = "juewushe"
+    opt["date"] = "2024.01.01_00.00"
+    opt["url"] = r"https://wx.zsxq.com/group/15552545584422"
+    opt["name"] = "yanjiuyuan"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None
