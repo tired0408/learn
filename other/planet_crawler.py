@@ -37,10 +37,19 @@ def init_folder(folder, name):
 
 class Store:
 
-    def __init__(self, dir_path, name, is_picture, is_annex):
+    def __init__(self, dir_path, name, is_picture, is_annex, is_segmentation):
+        """存储类
+
+        Args:
+            dir_path (str): 数据的存储文件夹地址
+            name (str): 知识星球星主名称
+            is_picture (bool): 是否下载图片
+            is_annex (bool): 是否下载附件
+            is_segmentation (bool): 是否按日期分割
+        """
         self.dir_path = dir_path
-        self.txt_path = None
-        self.f: Optional[TextIO] = None
+        self.txt_path = "" if is_segmentation else None
+        self.f: Optional[TextIO] = open(os.path.join(dir_path, f"{name}.txt"), 'a', encoding='utf-8')
         self.img_path, self.img_index = init_folder(dir_path, f"{name}的图片") if is_picture else (None, 0)
         self.pool = ThreadPoolExecutor(max_workers=10)
         self.tasks: List[Future] = []
@@ -101,7 +110,6 @@ class Store:
         if os.path.exists(source):
             shutil.move(source, target)
             return True
-        self.annex_download_list.append(name)
         return False
 
     def wait_task(self):
@@ -144,13 +152,13 @@ class Store:
             annexs: (list); 附件文件名列表
             comment: (list); 评论内容列表
         """
-        day = datetime.datetime.strptime(date, "%Y-%m-%d %H:%M").strftime("%Y-%m-%d")
-        txt_path = os.path.join(self.dir_path, f"{day}.txt")
-        if txt_path != self.txt_path:
-            if self.f is not None:
+        if self.txt_path is not None:
+            day = datetime.datetime.strptime(date, "%Y-%m-%d %H:%M").strftime("%Y-%m-%d")
+            txt_path = os.path.join(self.dir_path, f"{day}.txt")
+            if txt_path != self.txt_path:
                 self.f.close()
-            self.txt_path = txt_path
-            self.f = open(txt_path, "w", encoding="utf-8")
+                self.txt_path = txt_path
+                self.f = open(txt_path, "w", encoding="utf-8")
         self.f.writelines([
             f"**人物:{name}\n",
             f"**时间:{date}\n",
@@ -173,13 +181,13 @@ class Store:
 
 class Crawler:
 
-    def __init__(self, name, is_owner=False, is_img=False, annex_name=None, comment_name=None):
+    def __init__(self, name, is_owner=False, is_img=False, annex_name=None, comment_name=None, is_segmentation=False):
         """
         初始化
         :param name: (str); 星球名称
         :param is_owner: (bool); 是否只看星主
         :param is_img: (bool); 是否下载图片
-        :param annex_name: (srt); 下载附件的后缀名,用,分割,"all"为全部抓取,None为不抓取
+        :param annex_name: (str); 下载附件的后缀名,用,分割,"all"为全部抓取,None为不抓取
         :param comment_name: (str); 抓取评论的人名
         """
         dir_path = r"E:\NewFolder\zhishi"
@@ -197,8 +205,9 @@ class Crawler:
         data_folder = os.path.join(dir_path, name)
         if not os.path.exists(data_folder):
             os.mkdir(data_folder)
-        self.owner = Store(data_folder, name, is_img, annex_name is not None)
-        self.member = Store(data_folder, f"{name}_成员", is_img, annex_name is not None) if not is_owner else None
+        is_annex = annex_name is not None
+        self.owner = Store(data_folder, name, is_img, is_annex, is_segmentation)
+        self.member = Store(data_folder, f"{name}_成员", is_img, is_annex, is_segmentation) if not is_owner else None
 
     def __del__(self):
         """关闭谷歌浏览器"""
@@ -449,6 +458,7 @@ class Crawler:
                 WebDriverWait(container, 30).until(EC.visibility_of_element_located((By.CLASS_NAME, "download")))
                 container.find_element(By.CLASS_NAME, "download").click()
                 store.wait_start_annex_download(name)
+                store.annex_download_list.append(name)
             self.driver.execute_script("document.elementFromPoint(0, 0).click();")
             WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "file-preview-container")))
         return names
@@ -458,6 +468,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-o", "--owner", action="store_true", help="是否只看星主,默认查看全部")
     parser.add_argument("-i", "--img", action="store_true", help="是否下载图片,默认不下载")
+    parser.add_argument("-s", "--segmentaion", action="store_true", help="是否开启按日期分割文件,默认不开启")
     parser.add_argument("-a", "--annex", type=str, default=None, help="下载附件的后缀名,all代表全部,多个用,间隔")
     parser.add_argument("-c", "--comment", type=str, default=None, help="抓取评论的名字")
     parser.add_argument("-d", "--date", type=str, default="1800.01.01_00.00", help="抓取的开始日期,例如:2022.11.30_11.57")
@@ -467,6 +478,7 @@ if __name__ == "__main__":
     # 测试代码的时候进行修改
     # opt["owner"] = True
     # opt["img"] = True
+    # opt["segmentaion"] = True
     # opt["annex"] = "all"
     # opt["comment"] = "司令"
     # opt["date"] = "2024.01.01_00.00"
@@ -477,5 +489,5 @@ if __name__ == "__main__":
     assert opt["name"] is not None
     opt["date"] = datetime.datetime.strptime(opt["date"], "%Y.%m.%d_%H.%M")
     module = Crawler(opt["name"], is_owner=opt["owner"], is_img=opt["img"], annex_name=opt["annex"],
-                     comment_name=opt["comment"])
+                     comment_name=opt["comment"], is_segmentation=opt["segmentaion"])
     module.run(opt["url"], date=opt["date"])
