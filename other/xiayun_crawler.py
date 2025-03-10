@@ -549,30 +549,16 @@ class MeiTuanCrawler(WebCrawler):
         self._enter_rc_module(module, menu_name, name)
         WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))
         self._js_click(f"{self._js_span_find('展开筛选')}.click()", self._js_execute_result(self._js_span_find('收起筛选')))
-        # 点击日期选择
-        action = f"{self._js_shadow_root()}.querySelector('input[placeholder=\"开始日期\"]').parentElement.click()"
-        signal = f"!{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
-        self._js_click(action, self._js_execute_result(signal))
-        # 选择上个月
-        action = f"{self._js_span_find('上月')}.click()"
-        signal = f"{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
-        self._js_click(action, self._js_execute_result(signal))
-        # 点击查询
-        action = f"{self._js_span_find('查询')}.click()"
-        signal = f"{self._js_shadow_root()}.querySelector('li[title=\"上一页\"]')"
-        self._js_click(action, self._js_execute_result(signal), timeout=5)
-        # 清理excel文件
-        self._clear_excel(name)
-        # 点击下载文件
-        action = f"{self._js_span_find('导出')}.click()"
-        signal = f"{self._js_span_find('导出')}.parentNode.className.includes('saas-btn-loading')"
-        self._js_click(action, self._js_execute_result(signal))
-        # 等待文件下载完成
-        self.wait_download(f"*{name}*", name)
+        self._js_click_start_date()
+        self._js_click_last_month()
+        self._js_click_search()
+        self._clear_excel(name)  # 清理excel文件
+        self._js_click_download()
+        self.wait_download(f"*{name}*", name)  # 等待文件下载完成
         # 点击提醒
-        action = f"{self._js_span_find('我知道了')}.click()"
-        signal = f"!{self._js_shadow_root()}.querySelector('div[role=\"dialog\"]')"
-        self._js_click(action, self._js_execute_result(signal))
+        # action = f"{self._js_span_find('我知道了')}.click()"
+        # signal = f"!{self._js_shadow_root()}.querySelector('div[role=\"dialog\"]')"
+        # self._js_click(action, self._js_execute_result(signal))
 
     def download_autotrophy(self):
         """下载自营外卖/自提订单明细表"""
@@ -596,13 +582,20 @@ class MeiTuanCrawler(WebCrawler):
             print(f"{name}已存在，不再重新下载")
             return
         module = self._enter_main_module("报表中心")
-        submodule = self._enter_rc_module(module, menu_name, name)
-        self._date_select_1(submodule)
-        self._synthesize_income_condition(submodule)
-        self._search(submodule)
+        self._enter_rc_module(module, menu_name, name)
+        WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))  # 等待shadowRoot显现
+        self._js_click_start_date()
+        self._js_click_last_month()
+        action = f"{self._js_span_find('按日')}.click()"
+        signal = f"{self._js_span_find('按日')}.parentNode.className.includes('saas-radio-button-wrapper-checked')"
+        self._js_click(action, self._js_execute_result(signal))
+        action = f"{self._js_span_find('业务小类')}.click()"
+        signal = f"{self._js_span_find('业务小类')}.parentNode.className.includes('saas-radio-button-wrapper-checked')"
+        self._js_click(action, self._js_execute_result(signal))
+        self._js_click_search()
         self._clear_excel(name)
-        self._wait_search_finnsh_1(submodule)
-        self._download_direct(submodule, name, name)
+        self._js_click_download()
+        self.wait_download(f"*{name}*", name)
 
     def download_pay_settlement(self):
         """下载支付结算表"""
@@ -767,8 +760,8 @@ class MeiTuanCrawler(WebCrawler):
 
     def _js_click(self, action, signal, timeout=3):
         """通过JS命令点击元素"""
+        print(f"通过JS进行点击操作:{action}")
         for i in range(10):
-            print(f"开始第{i+1}次点击操作:{action}")
             time.sleep(1)
             try:
                 self._driver.execute_script(action)
@@ -784,6 +777,7 @@ class MeiTuanCrawler(WebCrawler):
                     self._driver.execute_script(signal)
                 except JavascriptException:
                     continue
+                print(f"成功进行点击操作:{action}")
                 return True
         raise Exception(f"多次尝试点击操作失败:{action}")
 
@@ -795,8 +789,32 @@ class MeiTuanCrawler(WebCrawler):
         """
         return value
 
+    def _js_click_start_date(self):
+        """"通过JS点击shadowRoot里面的开始日期控件"""
+        action = f"{self._js_shadow_root()}.querySelector('input[placeholder=\"开始日期\"]').parentElement.click()"
+        signal = f"!{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
+        self._js_click(action, self._js_execute_result(signal))
+
+    def _js_click_last_month(self):
+        """"通过JS点击shadowRoot里日期控件中的上月按钮"""
+        action = f"{self._js_span_find('上月')}.click()"
+        signal = f"{self._js_span_find('上月')}.closest('div.saas-picker-dropdown-range').className.includes('saas-picker-dropdown-hidden')"
+        self._js_click(action, self._js_execute_result(signal))
+    
+    def _js_click_search(self):
+        """"通过JS点击shadowRoot里的查询按钮"""
+        action = f"{self._js_span_find('查询')}.click()"
+        signal = f"{self._js_shadow_root()}.querySelector('li[title=\"上一页\"]')"
+        self._js_click(action, self._js_execute_result(signal), timeout=5)
+    
+    def _js_click_download(self):
+        """"通过JS点击shadowRoot里的下载按钮"""
+        action = f"{self._js_span_find('导出')}.click()"
+        signal = f"{self._js_span_find('导出')}.parentNode.className.includes('saas-btn-loading')"
+        self._js_click(action, self._js_execute_result(signal))
+
     def _date_select_1(self, submodule: WebElement):
-        """日期选择1:综合收款统计的那个类型日期选择控件"""
+        """日期选择1:支付结算,支付明细"""
         pattern = (By.XPATH, ".//input[@placeholder='请选择日期']")
         WebDriverWait(submodule, 60).until(EC.element_to_be_clickable(pattern))
         submodule.find_element(*pattern).click()
@@ -915,19 +933,6 @@ class MeiTuanCrawler(WebCrawler):
             WebDriverWait(select_ele, 2).until(lambda ele: "ant-checkbox-checked" in ele.get_attribute("class"))
         dialog.find_element(By.XPATH, ".//span[text()='确 定']/parent::button").click()
         self.wait_download(f"*{name}*", name)
-
-    def _synthesize_income_condition(self, submodule: WebElement):
-        """综合收款统计的查询条件"""
-        element = submodule.find_element(By.XPATH, ".//span[text()='按 日']/..")
-        if "isSelected" in element.get_attribute("class"):
-            print("当前统计周期已经是：按日")
-        else:
-            element.click()
-        element = submodule.find_element(By.XPATH, ".//span[text()='按业务小类统计']/..")
-        if " ant-checkbox-wrapper-checked" in element.get_attribute("class"):
-            print("已经是按业务小类统计")
-        else:
-            element.click()
 
     def _pay_settlement_condition(self, submodule: WebElement):
         """支付结算表的查询条件"""
