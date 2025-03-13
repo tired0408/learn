@@ -456,6 +456,7 @@ class Crawler:
             ele = WebDriverWait(element, 20).until(EC.element_to_be_clickable(element))
             ele.click()
             try:
+                print(f"下载附件:{name}")
                 ele = WebDriverWait(container, 3).until(EC.visibility_of_element_located((By.XPATH, ".//div[text()='下载']")))
                 ele.click()
                 store.wait_start_annex_download(name)
