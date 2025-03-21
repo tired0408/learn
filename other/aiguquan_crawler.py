@@ -60,6 +60,7 @@ class Main:
         # 下载聊天记录
         ele = WebDriverWait(self.driver, 10).until(EC.element_to_be_clickable((By.XPATH, "//button[text()='只看圈主']/ancestor::div[1]")))
         if "bindThis" not in ele.get_attribute("class"):
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", ele)
             ele.click()
             time.sleep(2)
         now_date = datetime.datetime.now()
