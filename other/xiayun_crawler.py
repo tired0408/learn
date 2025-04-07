@@ -1097,6 +1097,8 @@ class ElemeData:
         header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
         for name in ["商品金额", "技术服务费", "时段收费", "距离收费", "价格收费", "商家活动补贴", "商家代金券补贴", "智能满减津贴", "打包费", 
                      "商家配送费活动补贴", "商家呼单小费", "先享后付服务费"]:
+            if name not in header:
+                continue
             col_i = header.index(name) + 1
             for i in range(2, ws.max_row+1):
                 ws.cell(i, col_i, Decimal(ws.cell(i, col_i).value))
@@ -1279,7 +1281,7 @@ class TalkOutData:
                 chargeback = - app_ws.range(max_row, header.index("差额")).value + app_ws.range(
                     max_row, header.index("打包费")).value  # 部分退单-申请退单金额
                 other = sum([app_ws.range(max_row, header.index(name)).value for 
-                                name in ["商家配送费活动补贴", "商家呼单小费"]])  # 其他(商家自行配送补贴
+                                name in ["商家配送费活动补贴", "商家呼单小费"] if name in header])  # 其他(商家自行配送补贴
                 eat_now_pay_later = app_ws.range(max_row, header.index("先享后付服务费")).value  # 先享后付服务费
                 app_ws = app_wb.sheets["账单汇总"]
                 last_cell = app_ws.used_range.last_cell
