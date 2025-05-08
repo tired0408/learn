@@ -89,17 +89,18 @@ class Store:
             except requests.exceptions.ConnectionError:
                 continue
 
-    def wait_start_annex_download(self, name):
-        """等待附件开始下载"""
-        st = time.time()
-        while True:
-            if os.path.exists(os.path.join(self.chrome_download, f"{name}.crdownload")):
-                break
-            if os.path.exists(os.path.join(self.chrome_download, f"{name}")):
-                break
-            time.sleep(1)
-            if (time.time() - st) > 120:
-                raise Exception("Waiting download start timeout.")
+    def click_wait_annex_download(self, name, ele:WebElement):
+        """点击开始下载附件"""
+        for _ in range(5):
+            ele.click()
+            st = time.time()
+            while (time.time() - st) < 120:
+                if os.path.exists(os.path.join(self.chrome_download, f"{name}.crdownload")):
+                    return
+                if os.path.exists(os.path.join(self.chrome_download, f"{name}")):
+                    return
+                time.sleep(1)
+        raise Exception(f"Waiting download start timeout:{name}")
 
     def annex_exists(self, name):
         """判断附件是否存在"""
@@ -458,8 +459,7 @@ class Crawler:
             try:
                 print(f"下载附件:{name}")
                 ele = WebDriverWait(container, 3).until(EC.visibility_of_element_located((By.XPATH, ".//div[text()='下载']")))
-                ele.click()
-                store.wait_start_annex_download(name)
+                store.click_wait_annex_download(name, ele)
                 store.annex_download_list.append(name)
             except TimeoutException:
                 print(f"该附件已开启内容保护,仅支持在App下载:{name}")
@@ -480,14 +480,14 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    opt["owner"] = True
-    opt["img"] = True
-    # opt["segmentaion"] = True
-    opt["annex"] = "all"
-    opt["comment"] = "初善君"
-    opt["date"] = "2024.08.01_00.00"
-    opt["url"] = r"https://wx.zsxq.com/group/51112854528214"
-    opt["name"] = "chushanjun"
+    # opt["owner"] = True
+    # opt["img"] = True
+    # # opt["segmentaion"] = True
+    # opt["annex"] = "all"
+    # opt["comment"] = "初善君"
+    # opt["date"] = "2024.08.01_00.00"
+    # opt["url"] = r"https://wx.zsxq.com/group/51112854528214"
+    # opt["name"] = "chushanjun"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None
