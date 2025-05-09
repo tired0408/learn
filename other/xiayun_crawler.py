@@ -1,5 +1,6 @@
 """
 爬虫抓取夏云所需的销售数据报表,并填入已有的数据表中
+运行时候浏览器要全屏,否则有些按钮会没显示
 """
 import os
 import glob
@@ -7,7 +8,6 @@ import time
 import shutil
 import warnings
 import calendar
-import traceback
 import xlwings as xw
 import pandas as pd
 from xlwings.main import Sheet
@@ -32,7 +32,8 @@ from openpyxl.styles import PatternFill
 from openpyxl.styles import NamedStyle
 from openpyxl.utils.cell import get_column_letter, column_index_from_string
 warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
-
+import matplotlib
+matplotlib.use('Agg')  # 使用非 GUI 后端
 
 class SavePath:
     """保存地址"""
