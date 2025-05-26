@@ -87,7 +87,7 @@ class Main:
             time.sleep(1)
             c1 = EC.visibility_of_element_located((By.XPATH, f".//li[contains(@class, 'h_agq_page_li')]//span[contains(text(), '{select_date_str}')]"))
             c2 = EC.visibility_of_element_located((By.CLASS_NAME, "empty_list"))
-            ele = WebDriverWait(content_ele, 10).until(EC.any_of(c1, c2))
+            ele = WebDriverWait(content_ele, 30).until(EC.any_of(c1, c2))
             if "empty_list" in ele.get_attribute("class"):
                 continue
             last_ele_time, same_num = None, 0
