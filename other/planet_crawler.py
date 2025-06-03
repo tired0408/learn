@@ -54,7 +54,6 @@ class Store:
         self.pool = ThreadPoolExecutor(max_workers=10)
         self.tasks: List[Future] = []
         self.annex_path, _ = init_folder(dir_path, f"{name}的附件") if is_annex else (None, 0)
-        self.annex_download_list = collections.deque()
         self.chrome_download = r"D:\Download"
 
     def __del__(self):
@@ -89,27 +88,30 @@ class Store:
             except requests.exceptions.ConnectionError:
                 continue
 
-    def click_wait_annex_download(self, name, ele:WebElement):
+    def click_wait_annex_download(self, ele:WebElement, name, save_name):
         """点击开始下载附件"""
+        source = os.path.join(self.chrome_download, name)
+        target = os.path.join(self.annex_path, save_name)
+        if os.path.exists(source):
+            shutil.move(source, target)
+            print(f"附件已提前下载好，移动到指定位置:{save_name}")
+            return
         for _ in range(5):
             ele.click()
             st = time.time()
             while (time.time() - st) < 120:
-                if os.path.exists(os.path.join(self.chrome_download, f"{name}.crdownload")):
-                    return
-                if os.path.exists(os.path.join(self.chrome_download, f"{name}")):
-                    return
-                time.sleep(1)
+                if not os.path.exists(source):
+                    time.sleep(1)
+                    continue
+                target = os.path.join(self.annex_path, save_name)
+                shutil.move(source, target)
+                return
         raise Exception(f"Waiting download start timeout:{name}")
 
-    def annex_exists(self, name):
+    def annex_exists(self, save_name):
         """判断附件是否存在"""
-        target = os.path.join(self.annex_path, name)
+        target = os.path.join(self.annex_path, save_name)
         if os.path.exists(target):
-            return True
-        source = os.path.join(self.chrome_download, name)
-        if os.path.exists(source):
-            shutil.move(source, target)
             return True
         return False
 
@@ -117,30 +119,6 @@ class Store:
         """等待保存线程完成"""
         for task in self.tasks:
             task.result()
-
-    def wait_annex(self):
-        """等待附件保存完成"""
-        last_len = len(self.annex_download_list)
-        repeat_num = 0
-        while len(self.annex_download_list) != 0:
-            for _ in tqdm(range(len(self.annex_download_list))):
-                name = self.annex_download_list.popleft()
-                src = os.path.join(self.chrome_download, name)
-                if os.path.exists(src):
-                    tge = os.path.join(self.annex_path, name)
-                    shutil.move(src, tge)
-                else:
-                    self.annex_download_list.append(name)
-                    time.sleep(1)
-            if last_len == len(self.annex_download_list):
-                repeat_num += 1
-            else:
-                last_len = len(self.annex_download_list)
-                repeat_num = 0
-            if repeat_num > 10:
-                print("重复循环多次没有变化，退出循环")
-                print(f"问题列表:{self.annex_download_list}")
-                break
 
     def write_info(self, name, date, ctype, content, images, annexs, comment):
         """写入文字信息
@@ -274,13 +252,9 @@ class Crawler:
             print("-" * 150)
         print("等待作者相关的保存线程完成")
         self.owner.wait_task()
-        print("等待作者相关附件的保存完成")
-        self.owner.wait_annex()
         if self.member is not None:
             print("等待成员相关的保存线程完成")
             self.member.wait_task()
-            print("等待成员相关附件的保存完成")
-            self.member.wait_annex()
         print("爬虫抓取完成")
 
     def single_page_read(self, start_date=None):
@@ -341,7 +315,7 @@ class Crawler:
             content_text = text_method(content)
             comments = self.analysis_comment(topic_element)
             images = self.analysis_and_download_imgs(content.find_elements(By.TAG_NAME, "img"), store)
-            annexs = self.analysis_and_download_annex(topic_element, store)
+            annexs = self.analysis_and_download_annex(topic_element, store, date.replace(" ", "_").replace(":", "").replace("-", ""))
             store.write_info(role_name, date, content_type, content_text, images, annexs, comments)
 
     def wait_content_load(self):
@@ -436,7 +410,7 @@ class Crawler:
             names.append(name)
         return names
 
-    def analysis_and_download_annex(self, container: WebElement, store: Store):
+    def analysis_and_download_annex(self, container: WebElement, store: Store, date_str):
         """分析并下载附件"""
         if self.annex_name is None:
             return []
@@ -446,12 +420,13 @@ class Crawler:
         names = []
         for element in values:
             name = element.find_element(By.CLASS_NAME, "file-name").text
+            save_name = f"{date_str}_{name}"
             file_type = name.split(".")[-1]
             if self.annex_name != "all" and file_type not in self.annex_name:
                 continue
             names.append(name)
-            if store.annex_exists(name):
-                print(f"该附件已下载:{name}")
+            if store.annex_exists(save_name):
+                print(f"该附件已下载:{save_name}")
                 continue
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
             ele = WebDriverWait(element, 20).until(EC.element_to_be_clickable(element))
@@ -459,8 +434,7 @@ class Crawler:
             try:
                 print(f"下载附件:{name}")
                 ele = WebDriverWait(container, 3).until(EC.visibility_of_element_located((By.XPATH, ".//div[text()='下载']")))
-                store.click_wait_annex_download(name, ele)
-                store.annex_download_list.append(name)
+                store.click_wait_annex_download(ele, name, save_name)
             except TimeoutException:
                 print(f"该附件已开启内容保护,仅支持在App下载:{name}")
             self.driver.execute_script("document.elementFromPoint(0, 0).click();")
@@ -480,14 +454,14 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    # opt["owner"] = True
+    opt["owner"] = True
     # opt["img"] = True
     # # opt["segmentaion"] = True
-    # opt["annex"] = "all"
+    opt["annex"] = "docx,doc,xlsx,xls"
     # opt["comment"] = "初善君"
-    # opt["date"] = "2024.08.01_00.00"
-    # opt["url"] = r"https://wx.zsxq.com/group/51112854528214"
-    # opt["name"] = "chushanjun"
+    opt["date"] = "2022.01.01_01.01"
+    opt["url"] = r"https://wx.zsxq.com/group/15281584515252"
+    opt["name"] = "weiyou"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None
