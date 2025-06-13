@@ -680,6 +680,7 @@ class MeiTuanCrawler(WebCrawler):
         element = self._driver.find_element(*pattern)
         if "active-first-menu" in element.get_attribute("class"):
             print(f"已在{name}模块")
+            time.sleep(5)
             return current_module
         element.click()
         # 等待原有模块消失，即新模块显示
@@ -707,6 +708,7 @@ class MeiTuanCrawler(WebCrawler):
                     continue
                 break
             submodule = self._get_statement_submodule(module)
+        time.sleep(5)
         return submodule
 
     def _get_statement_submodule(self, module: WebElement):
@@ -745,7 +747,7 @@ class MeiTuanCrawler(WebCrawler):
             try:
                 self._action.move_to_element(menu).perform()
                 pattern = (By.XPATH, f"//ul[@id='{menu_id}$Menu']//li[text()='{name}']")
-                WebDriverWait(self._driver, 1).until(EC.visibility_of_element_located(pattern))
+                WebDriverWait(self._driver, 10).until(EC.visibility_of_element_located(pattern))
                 self._driver.find_element(*pattern).click()
             except TimeoutException:
                 continue
@@ -1012,8 +1014,8 @@ class ElemeData:
         if len(insurance_data) > 0:
             insert_data.append(["保险金额", insurance_data])
         # 提取抖音渠道佣金明细的数据
-        tiktok_ws = self.get_ws("抖音渠道佣金明细")
-        if tiktok_ws.max_row > 1:
+        tiktok_ws = self.get_ws("抖音渠道佣金明细") 
+        if tiktok_ws is not None and tiktok_ws.max_row > 1:
             header = [tiktok_ws.cell(1, i).value for i in range(1, tiktok_ws.max_column + 1)]
             date_i = header.index("账单日期")
             amount_i = header.index("结算金额")
