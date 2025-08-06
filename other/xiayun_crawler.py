@@ -205,8 +205,8 @@ class GetOperateDetail:
         data = pd.read_excel(GOL.save_path.synthesize_income, header=None)
         row2 = data.iloc[2].apply(replace_parentheses)
         row3 = data.iloc[3].apply(replace_parentheses)
-        cash_i = get_2row_index(row2, row3, "现金", "人民币")
-        scan_i_list = list(range(*get_2row_index(row2, row3, "扫码支付", None)))
+        cash_i = get_2row_index(row2, row3, "现金", "人民币", is_must=False)
+        scan_i_list = list(range(*get_row_range(row2, "扫码支付")))
         income_i = get_2row_index(row2, row3, "自定义记账", "公关/奖品/活动/无实质性收入（自）", is_must=False)
         wechat_i = get_2row_index(row2, row3, "自定义记账", ["微信收款（店长号收款）（自）", "微信店长号收款（自）", "店长微信收款收入（自）"])
         if wechat_i is None:
@@ -222,12 +222,12 @@ class GetOperateDetail:
             if row[1] != "会员充值":
                 continue
             if row[2] in ["充值", "撤销充值"]:
-                cash = row[cash_i]
+                cash = row[cash_i] if cash_i is not None else 0
                 wechat = row[wechat_i]
                 scan = sum(list_generate(scan_i_list, row))
                 income = 0 if income_i is None else row[income_i]
             elif row[2] == "退卡":
-                cash = row[cash_i]
+                cash = row[cash_i] if cash_i is not None else 0
                 wechat = row[wechat_i]
                 income = row[income_i] if income_i is not None else 0
                 scan = sum(list_generate(scan_i_list, row))
@@ -476,8 +476,8 @@ class DadaCrawler(WebCrawler):
             else:
                 element.find_element(By.CLASS_NAME, "dada-ico-angle-right").click()
             WebDriverWait(now_date_ele, 1).until(lambda ele: ele.text != cur_date_str)
-        element.find_element(By.XPATH, f".//div[@class='datepicker-item-text' and text()='{value}']").click()
-        WebDriverWait(self._driver, 1).until(EC.invisibility_of_element(element))
+        ele = WebDriverWait(element, 10).until(EC.presence_of_element_located((By.XPATH, f".//div[not(contains(@class, 'disable')) and text()='{value}']")))
+        ele.click()
 
 
 class MeiTuanCrawler(WebCrawler):
@@ -1379,19 +1379,35 @@ def get_3row_index(row1: pd.Series, row2: pd.Series, row3: pd.Series, name1, nam
 
 
 def get_2row_index(row1: pd.Series, row2: pd.Series, name1, name2, is_must=True):
-    "获取两行标题的某个数据的索引"
-    row1_drop = row1.dropna()
-    row1_values = list(row1_drop.values)
-    row1_indexs = [*list(row1_drop.index), len(row1)]
-    n1_i = row1_values.index(name1)
-    n1_s, n1_e = row1_indexs[n1_i], row1_indexs[n1_i + 1]
-    if name2 is None:
-        return n1_s, n1_e
+    """"获取两行标题的某个数据的索引"
+
+    Returns:
+        int: 指定的数据的列索引
+    """
+    name1_range = get_row_range(row1, name1)
+    if name1_range is None and not is_must:
+        return None
+    n1_s, n1_e = name1_range
     row2_drop = row2.iloc[n1_s:n1_e].dropna()
     row2_values = list(row2_drop.values)
     row2_indexs = list(row2_drop.index)
     return get_value_index(row2_indexs, row2_values, name2, is_must)
 
+def get_row_range(row:pd.Series, name):
+    """获取某个数据在该行的索引
+    
+    Returns:
+        int: 开始的索引值 
+        int: 结束的索引值
+    """
+    row_drop = row.dropna()
+    row_values = list(row_drop.values)
+    row_indexs = [*list(row_drop.index), len(row)]
+    if name not in row_values:
+        return None
+    n1_i = row_values.index(name)
+    n1_s, n1_e = row_indexs[n1_i], row_indexs[n1_i + 1]
+    return n1_s, n1_e
 
 def get_value_index(indexs, names:list, search_names, is_must):
     """获取多个标题中某个数据的索引"""

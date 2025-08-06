@@ -48,6 +48,7 @@ class Golbal:
         self.database_path = os.path.join(path, "脚本产品库.xlsx")
         self.eas_data_path = os.path.join(path, "EAS发货数据.xls")
         self.last_data_path = os.path.join(path, f"发货分析表{start_date}.xls")
+        self.accout_path = os.path.join(path, "账号信息.xlsx")
         now_day = datetime.date.today().strftime('%Y%m%d')
         self.save_path = os.path.join(path, f"发货分析表{now_day}.xls")
         self.deliver_path = os.path.join(path, f"发货数据总表{now_day}.xlsx")
@@ -628,16 +629,21 @@ def get_deliver_goods(date_value) -> pd.DataFrame:
     deliver_data = deliver_data[(deliver_data["订单日期"] >= start_date) & (deliver_data["订单日期"] < end_date)]
     for _, row in deliver_data.iterrows():
         rd.append({"客户": row["客户"], "商品名称": row["物料名称"], "数量": row["数量"]})
-    print("打开浏览器，读取发送给客户的数据")
-    for user, passwd in [
-        ["18626002881", "Scs@5085618"],
-        ["18750776934", "ZGh134679"],
-        ["18626005806", "Wh@940110"]
-    ]:
-        driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
-        each_rd = get_deliver_goods_each(driver, user, passwd, date_value)
-        print("关闭浏览器")
-        driver.quit()
+    df = pd.read_excel(GOL.accout_path, header=0)
+    for _, row in df.iterrows():
+        user = row["用户"]
+        passwd = row["密码"]
+        for _ in range(5):
+            try:
+                print("打开浏览器，读取发送给客户的数据")
+                driver = init_chrome(GOL.chromedriver_path, GOL.download_path, chrome_path=GOL.chrome_path, is_proxy=False)
+                each_rd = get_deliver_goods_each(driver, user, passwd, date_value)
+                print("关闭浏览器")
+                driver.quit()
+            except Exception:
+                print(f"读取发货数据失败,重新尝试读取")
+                continue
+            break
         if len(each_rd) == 0:
             continue
         rd.extend(each_rd)
