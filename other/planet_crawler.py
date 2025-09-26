@@ -437,7 +437,8 @@ class Crawler:
                 store.click_wait_annex_download(ele, name, save_name)
             except TimeoutException:
                 print(f"该附件已开启内容保护,仅支持在App下载:{name}")
-            self.driver.execute_script("document.elementFromPoint(0, 0).click();")
+            # 关闭弹窗
+            ActionChains(self.driver).move_to_element_with_offset(ele, 800, 0).click().perform()
             WebDriverWait(container, 10).until_not(EC.visibility_of_element_located((By.CLASS_NAME, "file-preview-container")))
         return names
 
@@ -454,14 +455,14 @@ if __name__ == "__main__":
     parser.add_argument("-n", "--name", type=str, default=None, help="知识星球的名称")
     opt = {key: value for key, value in parser.parse_args()._get_kwargs()}
     # 测试代码的时候进行修改
-    opt["owner"] = True
-    # opt["img"] = True
+    # opt["owner"] = True
+    # opt["img"] = False
     # # opt["segmentaion"] = True
-    opt["annex"] = "docx,doc,xlsx,xls"
+    # opt["annex"] = "all"
     # opt["comment"] = "初善君"
-    opt["date"] = "2022.01.01_01.01"
-    opt["url"] = r"https://wx.zsxq.com/group/15281584515252"
-    opt["name"] = "weiyou"
+    # opt["date"] = "2025.07.01_00.00"
+    # opt["url"] = r"https://wx.zsxq.com/group/51112854528214"
+    # opt["name"] = "chushanjun"
     # 验证参数的合规性
     assert opt["url"] is not None
     assert opt["name"] is not None

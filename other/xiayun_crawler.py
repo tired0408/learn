@@ -476,7 +476,8 @@ class DadaCrawler(WebCrawler):
             else:
                 element.find_element(By.CLASS_NAME, "dada-ico-angle-right").click()
             WebDriverWait(now_date_ele, 1).until(lambda ele: ele.text != cur_date_str)
-        ele = WebDriverWait(element, 10).until(EC.presence_of_element_located((By.XPATH, f".//div[not(contains(@class, 'disable')) and text()='{value}']")))
+        # 网页中的标签情况：<div class="datepicker-item-text active notinmonth">  
+        ele = WebDriverWait(element, 10).until(EC.presence_of_element_located((By.XPATH, f".//div[not(contains(@class, 'notinmonth')) and text()='{value}']")))
         ele.click()
 
 
