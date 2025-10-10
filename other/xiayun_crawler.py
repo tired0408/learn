@@ -506,8 +506,9 @@ class MeiTuanCrawler(WebCrawler):
         # clear_and_send(driver.find_element(By.ID, "account"), r"13194080718")
         # clear_and_send(driver.find_element(By.ID, "password"), r"stillrelax0601")
         # driver.find_element(By.XPATH, "//button[text()='登录']").click()
-        self._driver.get(r"https://pos.meituan.com")
+        self._driver.get(r"https://pos.meituan.com/web/operation/main#/")
         WebDriverWait(self._driver, 30).until(EC.title_is("美团管家"))
+        time.sleep(3)
 
     def toggle_store(self, name):
         """切换店铺"""
@@ -549,7 +550,7 @@ class MeiTuanCrawler(WebCrawler):
             return
         module = self._enter_main_module("报表中心")
         self._enter_rc_module(module, menu_name, name)
-        WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))
+        self._wait_shadow_dom()
         self._js_click(f"{self._js_span_find('展开筛选')}.click()", self._js_execute_result(self._js_span_find('收起筛选')))
         self._js_click_start_date()
         self._js_click_last_month()
@@ -585,7 +586,7 @@ class MeiTuanCrawler(WebCrawler):
             return
         module = self._enter_main_module("报表中心")
         self._enter_rc_module(module, menu_name, name)
-        WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))  # 等待shadowRoot显现
+        self._wait_shadow_dom()  # 等待shadowRoot显现
         self._js_click_start_date()
         self._js_click_last_month()
         action = f"{self._js_span_find('按日')}.click()"
@@ -754,17 +755,24 @@ class MeiTuanCrawler(WebCrawler):
                 continue
             break
 
+    def _wait_shadow_dom(self):
+        """等待shadow DOM加载完成"""
+        WebDriverWait(self._driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "render-box-root-x")))  # 等待shadowRoot显现
+        time.sleep(3)
+
     def _js_span_find(self, value):
         """"通过JS命令查找span元素"""
         return f"Array.from({self._js_shadow_root()}.querySelectorAll('span')).find(span => span.textContent.trim() === '{value}')"
     
     def _js_shadow_root(self):
         """查找shadowRoot"""
-        return "document.querySelector('render-box-root-x').shadowRoot"
+        return """
+            Array.from(document.querySelectorAll('render-box-root-x'))
+            .find(root => root.offsetParent !== null).shadowRoot
+        """
 
     def _js_click(self, action, signal, timeout=3):
         """通过JS命令点击元素"""
-        print(f"通过JS进行点击操作:{action}")
         for i in range(10):
             time.sleep(1)
             try:
@@ -773,7 +781,6 @@ class MeiTuanCrawler(WebCrawler):
                 if i < 9:
                     continue
                 else:
-                    print(f"需要点击的元素并不存在:{action}")
                     return 
             st = time.time()
             while time.time() - st < timeout:
@@ -781,7 +788,6 @@ class MeiTuanCrawler(WebCrawler):
                     self._driver.execute_script(signal)
                 except JavascriptException:
                     continue
-                print(f"成功进行点击操作:{action}")
                 return True
         raise Exception(f"多次尝试点击操作失败:{action}")
 
@@ -1058,33 +1064,39 @@ class ElemeData:
         """处理外卖账单明细分表"""
         ws = self.wb["外卖账单明细"]
         header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
-        # 计算结算金额并插入
-        settle_indexs = ["P", "Q", "S", "AC", "AD", "AG", "AX", "AY", "BA", "BR", "BN"]
+        # 插入标题
         col_i = header.index("结算金额") + 2
-        ws.insert_cols(col_i, 1)
+        ws.insert_cols(col_i, 2)
         ws.cell(1, col_i, "结算")
+        ws.cell(1, col_i+1, "差额")
+        # 更新标题
+        header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
+        # 获取“结算”列所需项的所在列字母
+        settle_names = ["商品金额", "打包费", "技术服务费", "增值服务费（店铺推广）", "智能满减津贴", "智能特价菜补贴", "配送服务费",
+                        "低起送服务优惠", "商家活动补贴", "商家代金券补贴", "商家配送费活动补贴", "商家呼单配送费", "商家呼单调度费", "骑手小费",
+                        "商家应收配送费", "先享后付服务费"]
+        settle_indexs = [header.index(name)+1 for name in settle_names]
+        settle_letters = [get_column_letter(i) for i in settle_indexs]
+        # 调整“结算”列所需项的数据格式
+        for name in settle_names:
+            col_i = header.index(name) + 1
+            for i in range(2, ws.max_row+1):
+                ws.cell(i, col_i, Decimal(ws.cell(i, col_i).value))
+        # 填充“结算”列的公式
+        settle_col_i = header.index("结算") + 1
         for i in range(2, ws.max_row + 1):
-            value = "="
-            for si in settle_indexs:
-                value += f"{si}{i}+"
-            value = value[:-1]
-            ws.cell(i, col_i, value)
-        # 计算差额并插入
-        col_i = header.index("结算金额") + 3
-        ws.insert_cols(col_i, 1)
-        ws.cell(1, col_i, "差额")
+            value = [f"{letter}{i}" for letter in settle_letters]
+            ws.cell(i, settle_col_i, f"={'+'.join(value)}")
+        # 填充"差额"列的公式
+        diff_col_i = header.index("差额") + 1 
+        diff_letter = [get_column_letter(diff_col_i-2), get_column_letter(diff_col_i-1)]
         for i in range(2, ws.max_row + 1):
-            ws.cell(i, col_i, f"=K{i}-J{i}")    
-        # 复制差额不为0的数据到新表(赔偿单)
+            ws.cell(i, diff_col_i, f"={diff_letter[1]}{i}-{diff_letter[0]}{i}")
+        # 计算差额并复制差额不为0的数据到新表(赔偿单)
         compensate_data = []
         for row in ws.iter_rows(min_row=2, values_only=True):
-            balance = 0
-            for si in settle_indexs:
-                try:
-                    balance += Decimal(str(row[column_index_from_string(si) - 1]))
-                except InvalidOperation:
-                    continue
-            balance -= Decimal(str(row[column_index_from_string("J") - 1]))
+            settle_value = [Decimal(str(row[i-1])) for i in settle_indexs]
+            balance = sum(settle_value) - Decimal(str(row[settle_col_i-2]))
             if balance == Decimal(str(0)):
                 continue
             compensate_data.append(row)
@@ -1092,27 +1104,14 @@ class ElemeData:
             compensate_ws = self.wb.create_sheet("赔偿单")
             for i in range(1, ws.max_column + 1):
                 compensate_ws.cell(1, i, ws.cell(1, i).value)
-            for i, row in enumerate(compensate_data, start=2):
-                for j, value in enumerate(row, start=1):
-                    compensate_ws.cell(i, j, value)
-                compensate_ws.cell(i, 13, f"=Q{i}+AE{i}+AS{i}+S{i}+AV{i}+AA{i}")
-                compensate_ws.cell(i, 14, f"=M{i}-L{i}")
-        # 调整EXCEL的部分数据格式，不然没法正确求和
-        header = [ws.cell(1, i).value for i in range(1, ws.max_column + 1)]
-        for name in ["商品金额", "技术服务费", "时段收费", "距离收费", "价格收费", "商家活动补贴", "商家代金券补贴", "智能满减津贴", "打包费", 
-                     "商家配送费活动补贴", "商家呼单小费", "先享后付服务费"]:
-            if name not in header:
-                continue
-            col_i = header.index(name) + 1
-            for i in range(2, ws.max_row+1):
-                ws.cell(i, col_i, Decimal(ws.cell(i, col_i).value))
+            self.add_total_row(compensate_ws)
         # 修改格式
         number_style = NamedStyle(name="number_style", number_format="0.00")
         for col in range(10, ws.max_column + 1):
             for row in range(1, ws.max_row+1):
                 ws.cell(row, col).style = number_style
         ws.freeze_panes = "A2"
-        # 最后一行新增合计数
+        self.add_total_row(ws) # 最后一行新增合计数
         sum_row_i = ws.max_row + 1
         ws.cell(sum_row_i, 1, "合计")
         for i in range(10, ws.max_column + 1):
@@ -1120,7 +1119,16 @@ class ElemeData:
             range_start = f"{col_str}2"
             range_end = f"{col_str}{sum_row_i - 1}"
             ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")    
-        
+    
+    def add_total_row(self, ws: Worksheet):
+        """新增合计行"""
+        sum_row_i = ws.max_row + 1
+        ws.cell(sum_row_i, 1, "合计")
+        for i in range(10, ws.max_column + 1):
+            col_str = get_column_letter(i)
+            range_start = f"{col_str}2"
+            range_end = f"{col_str}{sum_row_i - 1}"
+            ws.cell(sum_row_i, i, f"=SUM({range_start}:{range_end})")    
 
 class DaDaAutotrophy:
     """达达门店订单明细的处理"""
@@ -1454,15 +1462,8 @@ def list_generate(indexs, values):
 def copy_folder(src_folder, dst_folder):
     print("备份网站数据到备份文件夹")
     if os.path.exists(dst_folder):
-        for root, dirs, files in os.walk(dst_folder, topdown=False):
-            for file in files:
-                file_path = os.path.join(root, file)
-                os.remove(file_path)
-            for dir in dirs:
-                dir_path = os.path.join(root, dir)
-                os.rmdir(dir_path)
-    else:
-        os.makedirs(dst_folder)
+        shutil.rmtree(dst_folder)
+    os.makedirs(dst_folder)
     shutil.copytree(src_folder, dst_folder, dirs_exist_ok=True)
 
 
@@ -1475,6 +1476,7 @@ def crawler_main(chrome_path, driver_path, download_path, user_path):
     meituan.login()
     print("切换店铺")
     meituan.toggle_store(GOL.store_name)
+    time.sleep(3)
     print("下载综合营业统计表")
     meituan.download_synthesize_operate()
     print("下载自营外卖/自提订单明细表")
