@@ -92,8 +92,8 @@ class PerDayData:
         self.cash = None  # 现金
         self.wechat = None  # 第三方收入（微信）
         self.eat_in = None  # 堂食扫码收入
+        self.dianping = None  # 美团，大众点评
         self.ele_me = None  # 饿了么收入
-        self.dianping = None  # 大众点评
         self.member_cash = []  # 会员充值现金收入
         self.member_wechat = []  # 会员充值第三方支付（微信）
         self.member_scan = []  # 会员扫码充值
@@ -114,7 +114,7 @@ class GetOperateDetail:
     """营业明细表的数据获取类"""
 
     def __init__(self, path) -> None:
-        self.save_data = self.init_save_data()
+        self.save_data: Dict[str, PerDayData] = self.init_save_data()
         self.wb = self.init_excel(path)
         self.ws = self.wb.active
 
@@ -174,7 +174,8 @@ class GetOperateDetail:
         row3 = data.iloc[3].apply(replace_parentheses)
         row4 = data.iloc[4].apply(replace_parentheses)
         ele_me_i = get_3row_index(row2, row3, row4, "渠道营业构成", "饿了么外卖", "营业收入（元）", is_must=False)
-        dianping_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信", is_must=False)
+        dianping_wx_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "微信", is_must=False)
+        dianping_mt_i = get_3row_index(row2, row3, row4, "营业收入构成", "美团/大众点评支付", "美团支付", is_must=False)
         cach_i = get_3row_index(row2, row3, row4, "营业收入构成", "现金", "人民币", is_must=False)
         eat_in_i_list = list(range(*get_3row_index(row2, row3, row4, "营业收入构成", "扫码支付", None)))
         pubilc_relation_income_i = get_3row_index(
@@ -195,7 +196,7 @@ class GetOperateDetail:
             day_data.wechat = row[wechat_i]
             day_data.eat_in = sum(list_generate(eat_in_i_list, row))
             day_data.ele_me = row[ele_me_i] if ele_me_i is not None else 0 
-            day_data.dianping = row[dianping_i] if dianping_i is not None else 0 
+            day_data.dianping = sum([row[i] if i is not None else 0 for i in [dianping_wx_i, dianping_mt_i]])
             day_data.ele_me_free = row[ele_me_free_i]
             day_data.other_free = row[other_free_i]
             day_data.pubilc_relation_income = row[pubilc_relation_income_i] if pubilc_relation_income_i is not None else 0
@@ -328,6 +329,7 @@ class WebCrawler(ABC):
             name (str): 下载的文件名称
             name_key (str, optional): 对应保存地址获取的键值. Defaults to None.
         """
+        print(f"等待下载文件:{name}")
         name_key = name if name_key is None else name_key
         file_path: str = ""
         st = time.time()
@@ -1010,7 +1012,7 @@ class ElemeData:
             i -= 1
         # 提取保险相关业务账单明细的数据
         insurance_data = {}
-        insurance_ws = self.wb["保险相关业务账单明细"]
+        insurance_ws = self.wb["保险相关业务账单明细"] if "保险相关业务账单明细" in self.wb.sheetnames else self.wb["保障服务费账单明细"]
         header = [insurance_ws.cell(1, i).value for i in range(1, insurance_ws.max_column + 1)]
         date_i = header.index("账单日期")
         amount_i = header.index("结算金额")
