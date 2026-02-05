@@ -29,7 +29,7 @@ from datetime import timedelta, date, datetime
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl import load_workbook
 from openpyxl.cell import Cell
-from openpyxl.styles import PatternFill, Font, NamedStyle
+from openpyxl.styles import PatternFill, Font, NamedStyle, Side, Border
 from openpyxl.utils.cell import get_column_letter, column_index_from_string
 warnings.simplefilter("ignore")  # 忽略pandas使用openpyxl读取excel文件的警告
 import matplotlib
@@ -1098,7 +1098,7 @@ class ElemeData:
     def del_useless_sheet(self):
         """删除没用的分表"""
         for name in self.wb.sheetnames:
-            if name in ["账单汇总", "外卖账单明细", "抖音渠道佣金明细","保险相关业务账单明细", "赔偿单", "对账指引"]:
+            if name in ["账单汇总", "外卖账单明细", "抖音渠道佣金明细","保险相关业务账单明细", "赔偿单", "客单价"]:
                 continue
             print(f"删除分表:{name}")
             sheet = self.wb[name]
@@ -1182,6 +1182,17 @@ class ElemeData:
         for i in range(column_index_from_string("E"), column_index_from_string("I")):
             name = header[i]
             ws.cell(row_i, i, df_result[name].sum())
+        # 给所有数据加框线
+        thin_side  = Side(border_style="thin", color="000000")
+        border = Border(
+            left=thin_side,
+            right=thin_side,
+            top=thin_side,
+            bottom=thin_side
+        )
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.border = border
 
     def get_ws(self, name):
         """获取工作表,排除空格等障碍"""
@@ -1215,7 +1226,7 @@ class ElemeData:
         diff_col_i = header.index("差额") + 1 
         for i in range(2, ws.max_row + 1):
             ws.cell(i, diff_col_i, "=K3-J3")
-        # 计算差额并复制差额不为0的数据到新表(赔偿单)
+        # 创建新表---赔偿单：差额不为0的数据
         compensate_data = []
         settle_indexs = [column_index_from_string(letter) for letter in settle_letters]
         for row in ws.iter_rows(min_row=2, values_only=True):
@@ -1229,6 +1240,21 @@ class ElemeData:
             for i in range(1, ws.max_column + 1):
                 compensate_ws.cell(1, i, ws.cell(1, i).value)
             self.add_total_row(compensate_ws)
+        # 创建新表---客单价：订单子类型为即时单
+        value_i = None
+        custom_ws: Worksheet = self.wb.create_sheet("客单价")
+        row_i = 2
+        for i in range(1, ws.max_column + 1):
+            value = ws.cell(1, i).value
+            if value == "订单子类型":
+                value_i = i
+            custom_ws.cell(1, i, value)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[value_i] != "即时单":
+                continue
+            for i in range(1, ws.max_column + 1):
+                custom_ws.cell(row_i, i, row[i-1].value)
+            row_i += 1
         # 最后一行新增合计数
         self.add_total_row(ws) 
         sum_row_i = ws.max_row + 1
@@ -1755,7 +1781,7 @@ def main():
         GOL.save_path.autotrophy_meituan = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(美团后台).xlsx")
         GOL.save_path.autotrophy_dada = os.path.join(save_folder, f"{GOL.store_name}自营外卖{date_str}(达达).xlsx")
         if os.path.exists(GOL.save_path.operate_detail):
-            print(f"{deal_name}的营业明细表已在不跑第二遍")
+            print(f"汇总表格已在不跑第二遍:{GOL.save_path.operate_detail}")
             continue
         # 从网站上下载相关EXCEL文件
         crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
