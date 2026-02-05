@@ -319,7 +319,7 @@ class WebCrawler(ABC):
         self._action = ActionChains(self._driver)
 
     @abstractmethod
-    def _init_name2save(self):
+    def _init_name2save(self) -> dict:
         """初始化下载文件与文件保存地址的对应关系"""
 
     def wait_download(self, name, name_key=None):
@@ -1648,33 +1648,49 @@ def crawler_main(chrome_path, driver_path, download_path, user_path):
     """网站抓取的主方法"""
     print("启动浏览器，开始爬虫抓取")
     driver = init_chrome(chrome_path, driver_path, download_path, user_path)
+    all_download = False
     meituan = MeiTuanCrawler(driver, download_path)
-    print("登录并打开美团网站")
-    meituan.login()
-    print("切换店铺")
-    meituan.toggle_store(GOL.store_name)
-    time.sleep(3)
-    print("下载综合营业统计表")
-    meituan.download_synthesize_operate()
-    print("下载自营外卖/自提订单明细表")
-    meituan.download_autotrophy()
-    print("下载综合收款统计表的数据")
-    meituan.download_synthesize_income()
-    print("下载支付结算表的相关数据")
-    meituan.download_pay_settlement()
-    print("下载支付明细表的相关数据")
-    meituan.download_pay_detail()
-    print("下载储值消费汇总表的数据")
-    meituan.download_store_consume()
-    print("下载会员新增情况统计表的相关数据")
-    meituan.download_member_addition()
-    print("从美团网站爬虫导出EXCEL文件已完成")
+    for path in meituan._name2save.values():
+        if os.path.exists(path):
+            continue
+        break
+    else:
+        all_download = True
+    if not all_download:
+        print("登录并打开美团网站")
+        meituan.login()
+        print("切换店铺")
+        meituan.toggle_store(GOL.store_name)
+        time.sleep(3)
+        print("下载综合营业统计表")
+        meituan.download_synthesize_operate()
+        print("下载自营外卖/自提订单明细表")
+        meituan.download_autotrophy()
+        print("下载综合收款统计表的数据")
+        meituan.download_synthesize_income()
+        print("下载支付结算表的相关数据")
+        meituan.download_pay_settlement()
+        print("下载支付明细表的相关数据")
+        meituan.download_pay_detail()
+        print("下载储值消费汇总表的数据")
+        meituan.download_store_consume()
+        print("下载会员新增情况统计表的相关数据")
+        meituan.download_member_addition()
+        print("从美团网站爬虫导出EXCEL文件已完成")
+    all_download = False
     dada = DadaCrawler(driver, download_path)
-    print("登入并打开达达网站")
-    dada.login()
-    print("下载门店明细报表")
-    dada.download_store_report()
-    print("从达达网站爬虫导出EXCEL文件已完成")
+    for path in dada._name2save.values():
+        if os.path.exists(path):
+            continue
+        break
+    else:
+        all_download = True
+    if not all_download:
+        print("登入并打开达达网站")
+        dada.login()
+        print("下载门店明细报表")
+        dada.download_store_report()
+        print("从达达网站爬虫导出EXCEL文件已完成")
     driver.quit()
 
 def operation_detail_main(template_path):
