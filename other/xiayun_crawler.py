@@ -1168,20 +1168,15 @@ class ElemeData:
             each_cell._style = copy(header_style)
         # 写入数据
         data_row = len(df_result)
-        max_col = len(df_result_header)
-        for i in range(2, ws.max_row+1, 1):
-            for j in range(max_col):
-                data_i = i-2
-                if data_i < data_row:
-                    ws.cell(i, j+1, df_result.iloc[data_i, j])
-                else:
-                    ws.cell(i, j+1, None)
+        for i, row in df_result.iterrows():
+            for j, value in enumerate(row):
+                ws.cell(i + 2, j + 1, value)
+        ws.delete_rows(data_row+2, ws.max_row - data_row-1) 
         # 对数据进行求和
-        row_i = len(df_result)
+        row_i = len(df_result) + 2
         header = df_result.columns.tolist()
-        for i in range(column_index_from_string("E"), column_index_from_string("I")):
-            name = header[i]
-            ws.cell(row_i, i, df_result[name].sum())
+        for i in range(header.index("结算金额"), header.index("小计")+1):
+            ws.cell(row_i, i+1, df_result[header[i]].sum())
         # 给所有数据加框线
         thin_side  = Side(border_style="thin", color="000000")
         border = Border(
