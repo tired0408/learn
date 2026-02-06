@@ -1227,34 +1227,40 @@ class ElemeData:
         for i in range(2, ws.max_row + 1):
             ws.cell(i, diff_col_i, "=K3-J3")
         # 创建新表---赔偿单：差额不为0的数据
-        compensate_data = []
         settle_indexs = [column_index_from_string(letter) for letter in settle_letters]
+        compensate_ws: Worksheet = None
+        row_i = 2
         for row in ws.iter_rows(min_row=2, values_only=True):
             settle_value = [Decimal(str(row[i-1])) for i in settle_indexs]  # 计算数据
             balance = sum(settle_value) - Decimal(str(row[settle_col_i-2]))
             if balance == Decimal(str(0)):
                 continue
-            compensate_data.append(row)
-        if len(compensate_data) != 0:
-            compensate_ws = self.wb.create_sheet("赔偿单")
-            for i in range(1, ws.max_column + 1):
-                compensate_ws.cell(1, i, ws.cell(1, i).value)
+            if compensate_ws is None:
+                compensate_ws = self.wb.create_sheet("赔偿单")
+                for i in range(1, ws.max_column + 1):
+                    compensate_ws.cell(1, i, ws.cell(1, i).value)
+            for i, value in enumerate(row):
+                compensate_ws.cell(row_i, i+1, value)
+            row_i += 1
+        if compensate_ws is not None:
             self.add_total_row(compensate_ws)
         # 创建新表---客单价：订单子类型为即时单
-        value_i = None
-        custom_ws: Worksheet = self.wb.create_sheet("客单价")
+        value_i = header.index("订单子类型")
+        custom_ws: Worksheet = None
         row_i = 2
-        for i in range(1, ws.max_column + 1):
-            value = ws.cell(1, i).value
-            if value == "订单子类型":
-                value_i = i
-            custom_ws.cell(1, i, value)
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[value_i] != "即时单":
                 continue
-            for i in range(1, ws.max_column + 1):
-                custom_ws.cell(row_i, i, row[i-1].value)
+            if custom_ws is None:
+                custom_ws = self.wb.create_sheet("客单价")
+                for i in range(1, ws.max_column + 1):
+                    value = ws.cell(1, i).value
+                    custom_ws.cell(1, i, value)
+            for i, value in enumerate(row):
+                custom_ws.cell(row_i, i+1, value)
             row_i += 1
+        if custom_ws is not None:
+            self.add_total_row(custom_ws)
         # 最后一行新增合计数
         self.add_total_row(ws) 
         sum_row_i = ws.max_row + 1
@@ -1803,8 +1809,6 @@ def main():
         crawler_main(chrome_path, chrome_driver_path, download_path, user_path)
         # 备份所有数据，作为回退处理，减少二次从网站上下载数据的情况发生
         copy_folder(save_folder, backup_folder)
-        # 汇总营业明细表
-        operation_detail_main(operate_detail_template)
         # 饿了么导出数据的处理-账单明细表
         eleme_main()
         # 自营外卖(美团后台)表处理
@@ -1813,7 +1817,8 @@ def main():
         dada_autotrophy_main()
         # 汇总外卖收入表
         take_out_main()
-
+        # 汇总营业明细表
+        operation_detail_main(operate_detail_template)
 
 if __name__ == "__main__":
     main()
